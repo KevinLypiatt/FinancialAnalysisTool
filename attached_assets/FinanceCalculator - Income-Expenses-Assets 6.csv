@@ -1,0 +1,25 @@
+Description,Owner,Type,Taxable,Frequency,Growth_Rate,Capital_Value,Period_Value
+Salary,Adrian,Income,Yes,Monthly,0%,£0.00,"£5,000.00"
+State Pension,Adrian,Income,Yes,Weekly,0%,£0.00,£200.00
+SIPP Pension,Adrian,Asset,Yes,Monthly,4%,"£500,000.00","£2,000.00"
+Savings,Adrian,Asset,Yes,Investment,2%,"£20,000.00",£0.00
+Care Home Fees,Hilary,Expense,No,Weekly,0%,£0.00,"£1,400.00"
+Savings,Hilary,Asset,No,Monthly,2%,"£80,000.00","£1,000.00"
+State Pension,Hilary,Income,Yes,Weekly,0%,£0.00,£450.00
+General Shopping,Joint,Expense,No,Monthly,0%,£0.00,£750.00
+Household Bills,Joint,Expense,No,Monthly,0%,£0.00,£500.00
+Personal Care / Health,Joint,Expense,No,Monthly,0%,£0.00,£100.00
+Groceries,Joint,Expense,No,Monthly,0%,£0.00,£500.00
+Eating Out,Joint,Expense,No,Monthly,0%,£0.00,£250.00
+Finance Fees,Joint,Expense,No,Monthly,0%,£0.00,£50.00
+Subscriptions,Joint,Expense,No,Monthly,0%,£0.00,£100.00
+Charity,Joint,Expense,No,Monthly,0%,£0.00,£50.00
+Transport,Joint,Expense,No,Monthly,0%,£0.00,£250.00
+Entertainment,Joint,Expense,No,Monthly,0%,£0.00,£50.00
+General / Misc,Joint,Expense,No,Monthly,0%,£0.00,£100.00
+House Maintenance,Joint,Expense,No,Monthly,0%,£0.00,£100.00
+Credit Cards,Joint,Expense,No,Monthly,0%,£0.00,£250.00
+State Pension,Linz,Income,Yes,Weekly,0%,£0.00,£200.00
+SIPP Pension,Linz,Asset,Yes,Monthly,4%,"£75,000.00","£1,000.00"
+Trust Bank Account,Linz,Asset,No,Monthly,2%,"£100,000.00","£1,000.00"
+Savings,Linz,Asset,Yes,Investment,2%,"£20,000.00",£0.00
