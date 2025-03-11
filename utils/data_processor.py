@@ -59,6 +59,78 @@ def calculate_depletion_years(capital, monthly_withdrawal, growth_rate=0):
     
     return years if years < max_years else float('inf')
 
+def calculate_detailed_asset_projections(assets_df, years=25):
+    """
+    Calculate detailed year-by-year projections for each asset over the specified period.
+    
+    Args:
+        assets_df: DataFrame containing asset information
+        years: Number of years to project (default: 25)
+        
+    Returns:
+        Dictionary containing annual projections for each asset
+    """
+    projections = {}
+    
+    # Initialize with year 0 (current values)
+    projections['years'] = list(range(years + 1))
+    
+    # Process each asset
+    for _, asset in assets_df.iterrows():
+        asset_key = f"{asset['Description']} ({asset['Owner']})"
+        
+        # Get initial parameters
+        capital = asset['Capital_Value']
+        monthly_withdrawal = asset['Monthly_Value']
+        annual_withdrawal = monthly_withdrawal * 12
+        
+        # Convert growth rate from string/percentage to decimal
+        growth_rate = asset['Growth_Rate']
+        if isinstance(growth_rate, str):
+            growth_rate = float(growth_rate.strip('%').replace(',', '')) / 100
+        
+        # Calculate projection for each year
+        yearly_values = [capital]  # Start with current value (year 0)
+        
+        for year in range(1, years + 1):
+            # For each year, calculate the new capital considering growth and withdrawals
+            # Using the compound interest formula with regular withdrawals
+            if monthly_withdrawal > 0:
+                # For assets with withdrawals, simulate month by month
+                monthly_growth_rate = growth_rate / 12
+                current_capital = capital
+                
+                for _ in range(12):
+                    # Apply monthly growth
+                    current_capital *= (1 + monthly_growth_rate)
+                    # Subtract withdrawal
+                    current_capital -= monthly_withdrawal
+                    # Ensure non-negative values
+                    current_capital = max(0, current_capital)
+                
+                capital = current_capital
+            else:
+                # For assets without withdrawals, use compound interest formula
+                capital = capital * (1 + growth_rate) ** 1
+            
+            yearly_values.append(capital)
+            
+        # Store this asset's projection
+        projections[asset_key] = yearly_values
+    
+    # Add a "Total Assets" projection
+    total_projections = [0] * (years + 1)
+    
+    # Calculate the sum for each year
+    for asset_key, values in projections.items():
+        if asset_key != 'years':
+            for i, value in enumerate(values):
+                total_projections[i] += value
+    
+    projections['Total Assets'] = total_projections
+    
+    return projections
+
 def process_data(df):
     """Process the financial data and return summary statistics."""
     # Clean currency values
@@ -66,8 +138,15 @@ def process_data(df):
     df['Period_Value'] = df['Period_Value'].apply(convert_currency_to_float)
     df['Monthly_Value'] = df.apply(calculate_monthly_value, axis=1)
 
-    # Calculate depletion years for each asset
+    # Add an explicit column to indicate if an asset generates income
     assets = df[df['Type'] == 'Asset'].copy()
+    assets['Generates_Income'] = assets['Period_Value'] > 0
+    assets['Income_Description'] = assets.apply(
+        lambda x: f"Income from {x['Description']}" if x['Period_Value'] > 0 else "N/A", 
+        axis=1
+    )
+    
+    # Calculate depletion years for each asset
     assets['Depletion_Years'] = assets.apply(
         lambda x: calculate_depletion_years(
             x['Capital_Value'],
@@ -77,12 +156,21 @@ def process_data(df):
         axis=1
     )
 
-    # Process income per person
+    # Process income per person with clearer distinction between asset income and other income
     income_summary = {}
     for owner in df['Owner'].unique():
         if owner != 'Joint':
+            # Regular non-asset income
             regular_income = df[(df['Type'] == 'Income') & (df['Owner'] == owner)]['Monthly_Value'].sum() * 12
+            
+            # Income from assets (explicitly labeled)
             asset_income = df[(df['Type'] == 'Asset') & (df['Owner'] == owner) & (df['Period_Value'] > 0)]['Monthly_Value'].sum() * 12
+            
+            # Add a detailed breakdown of income sources
+            income_sources = {
+                'regular_income': regular_income,
+                'asset_income': asset_income,
+            }
 
             total_income = regular_income + asset_income
             tax_details = calculate_uk_tax(total_income)
@@ -93,18 +181,24 @@ def process_data(df):
                 'gross_income': total_income,
                 'tax': tax,
                 'net_income': net_income,
+                'income_sources': income_sources,  # Add detailed breakdown
                 'tax_details': tax_details
             }
 
     total_net_income = sum(summary['net_income'] for summary in income_summary.values())
     total_expenses = df[df['Type'] == 'Expense']['Monthly_Value'].sum() * 12
 
+    # Calculate detailed asset projections for 25 years
+    asset_projections = calculate_detailed_asset_projections(assets, 25)
+
+    # Return enhanced processed data
     return {
         'income_summary': income_summary,
         'total_net_income': total_net_income,
         'total_expenses': total_expenses,
         'df': df,
-        'assets': assets
+        'assets': assets,
+        'asset_projections': asset_projections  # Add the detailed projections
     }
 
 def calculate_uk_tax(annual_income):

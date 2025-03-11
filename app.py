@@ -6,7 +6,8 @@ from utils.visualizations import (
     create_income_summary_table,
     create_cashflow_summary,
     create_cashflow_sankey,
-    format_currency
+    format_currency,
+    create_asset_projection_table  # Add this import
 )
 from utils.ai_chat import render_chat_interface  # Add this import
 
@@ -437,13 +438,47 @@ def main():
 
             # Asset projections section
             st.header("Asset Projections")
-            years = st.slider("Projection Period (Years)", min_value=1, max_value=30, value=20)  # Changed default from 10 to 20
+            years = st.slider("Chart Projection Period (Years)", min_value=1, max_value=30, value=20)  # Changed default from 10 to 20
 
             projections = calculate_projections(processed_data['df'], years)
             st.plotly_chart(
                 create_projection_chart(projections),
                 use_container_width=True
             )
+            
+            # Add the new asset projection table
+            st.subheader("Asset Value Forecast Table")
+            
+            # Create the projection table if available
+            if 'asset_projections' in processed_data:
+                # Get the asset projections
+                asset_projections = processed_data['asset_projections']
+                
+                # Store original assets for reference in the table creation
+                asset_projections['original_assets'] = processed_data['assets']
+                
+                # Create the table with intervals at 5, 10, 15, and 20 years
+                projection_table = create_asset_projection_table(asset_projections)
+                
+                # Format the currency columns
+                for col in projection_table.columns:
+                    if col not in ['Asset', 'Growth Rate', 'Withdrawal Rate']:
+                        projection_table[col] = projection_table[col].apply(lambda x: f"£{x:,.0f}")
+                
+                # Display the table
+                st.dataframe(
+                    projection_table,
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Add a note about the projections
+                st.caption("""
+                This table shows projected asset values at 5-year intervals based on current growth rates and withdrawal levels.
+                The 'Withdrawal Rate' is calculated as annual withdrawals divided by current value.
+                """)
+            else:
+                st.info("Detailed asset projections not available.")
 
             # Asset depletion analysis
             st.subheader("Asset Depletion Analysis")

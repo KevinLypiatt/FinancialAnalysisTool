@@ -1,6 +1,7 @@
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
+import pandas as pd  # Add pandas import at the top
 
 def format_currency(value):
     """Format number as UK currency string."""
@@ -119,8 +120,8 @@ def create_projection_chart(projections):
         legend=dict(
             yanchor="top",
             y=0.99,
-            xanchor="left",
-            x=0.01
+            xanchor="right",  # Changed from "left" to "right"
+            x=0.99           # Changed from 0.01 to 0.99
         ),
         yaxis_tickformat='£,.0f',
         plot_bgcolor='white',  # White background for better contrast
@@ -298,3 +299,102 @@ def create_cashflow_sankey(df, total_net_income=None):
     )
 
     return fig
+
+def create_asset_projection_table(asset_projections, intervals=[5, 10, 15, 20]):
+    """
+    Create a table showing asset projections at specified year intervals.
+    
+    Args:
+        asset_projections: Dictionary containing asset projections
+        intervals: List of year intervals to display (default: [5, 10, 15, 20])
+        
+    Returns:
+        DataFrame containing the projection table
+    """
+    # Create a list to hold table rows
+    table_data = []
+    
+    # Process each asset
+    for asset_key, values in asset_projections.items():
+        if asset_key != 'years' and asset_key != 'original_assets':
+            # Get current value (year 0)
+            current_value = values[0]
+            
+            # Determine if this is an asset or the total
+            is_total = (asset_key == 'Total Assets')
+            
+            # Calculate growth rate and withdrawal rate
+            if not is_total:
+                # Extract asset name and owner from the key
+                parts = asset_key.split(' (')
+                asset_name = parts[0]
+                owner = parts[1].rstrip(')')
+                
+                # Find this asset in the original data
+                asset_found = False
+                for _, asset in asset_projections.get('original_assets', pd.DataFrame()).iterrows():
+                    if asset['Description'] == asset_name and asset['Owner'] == owner:
+                        growth_rate = asset['Growth_Rate']
+                        if isinstance(growth_rate, str):
+                            growth_rate = float(growth_rate.strip('%').replace(',', '')) / 100
+                            growth_rate_display = f"{growth_rate:.1%}"
+                        else:
+                            growth_rate_display = f"{growth_rate:.1%}"
+                        
+                        monthly_withdrawal = asset['Monthly_Value']
+                        annual_withdrawal = monthly_withdrawal * 12
+                        annual_withdrawal_rate = annual_withdrawal / current_value if current_value > 0 else 0
+                        withdrawal_rate_display = f"{annual_withdrawal_rate:.1%}" if annual_withdrawal_rate > 0 else "0.0%"
+                        
+                        asset_found = True
+                        break
+                
+                if not asset_found:
+                    growth_rate_display = "N/A"
+                    withdrawal_rate_display = "N/A"
+            else:
+                growth_rate_display = "Varies"
+                withdrawal_rate_display = "Varies"
+            
+            # Get values at each interval
+            interval_values = []
+            for year in intervals:
+                if year < len(values):
+                    interval_values.append(values[year])
+                else:
+                    # If projection doesn't go this far, use the last available value
+                    interval_values.append(values[-1])
+            
+            # Create a row for this asset
+            row = {
+                'Asset': asset_key,
+                'Current Value': current_value,
+                'Growth Rate': growth_rate_display,
+                'Withdrawal Rate': withdrawal_rate_display
+            }
+            
+            # Add interval values
+            for i, year in enumerate(intervals):
+                row[f'Year {year}'] = interval_values[i]
+            
+            table_data.append(row)
+    
+    # Create the DataFrame
+    table_df = pd.DataFrame(table_data)
+    
+    # No longer adding 'Total Portfolio' row since we already have 'Total Assets'
+    
+    # Sort so that Total Assets appears at the bottom
+    if 'Asset' in table_df.columns and not table_df.empty:
+        # Create a custom sort key
+        def sort_key(asset_name):
+            if asset_name == 'Total Assets':
+                return 2  # Last
+            else:
+                return 1  # Regular assets
+                
+        # Apply the custom sort
+        table_df['sort_order'] = table_df['Asset'].apply(sort_key)
+        table_df = table_df.sort_values('sort_order').drop('sort_order', axis=1)
+    
+    return table_df
