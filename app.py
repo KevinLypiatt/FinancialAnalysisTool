@@ -384,43 +384,27 @@ def main():
                         st.session_state.df = df
                     df = st.session_state.df  # Use df from session state
 
-                # Individual income summaries
+                # Individual income summaries - restructured to single column layout
                 st.header("Individual Financial Summary")
                 income_summary_table = create_income_summary_table(processed_data['income_summary'])
 
-                # Create table headers
-                col1, col2, col3, col4, col5 = st.columns([0.2, 0.3, 0.2, 0.2, 0.1])
-                with col1:
-                    st.markdown("<b>Person</b>", unsafe_allow_html=True)
-                with col2:
-                    st.markdown("<b>Gross Annual Income</b>", unsafe_allow_html=True)
-                with col3:
-                    st.markdown("<b>Estimated Tax</b>", unsafe_allow_html=True)
-                with col4:
-                    st.markdown("<b>Net Annual Income</b>", unsafe_allow_html=True)
-                with col5:
-                    st.markdown("<b>Details</b>", unsafe_allow_html=True)
-
-                # Create table rows
-                for row in income_summary_table:
-                    col1, col2, col3, col4, col5 = st.columns([0.2, 0.3, 0.2, 0.2, 0.1])
-                    with col1:
-                        st.markdown(f"<div class='income-table'>{row['Owner']}</div>", unsafe_allow_html=True)
-                    with col2:
-                        st.markdown(f"<div class='income-table'>{row['Gross Annual Income']}</div>", unsafe_allow_html=True)
-                    with col3:
-                        st.markdown(f"<div class='income-table'>{row['Estimated Tax']}</div>", unsafe_allow_html=True)
-                    with col4:
-                        st.markdown(f"<div class='income-table'>{row['Net Annual Income']}</div>", unsafe_allow_html=True)
-                    with col5:
-                        if st.button("ℹ️", key=f"info_{row['Owner']}", help=f"Show tax calculation details for {row['Owner']}"):
+                # Create a column for each person
+                person_cols = st.columns(len(income_summary_table))
+                
+                # Populate each column with a person's financial summary
+                for i, row in enumerate(income_summary_table):
+                    with person_cols[i]:
+                        st.subheader(row['Owner'])
+                        st.markdown(f"**Gross Annual Income:** {row['Gross Annual Income']}")
+                        st.markdown(f"**Estimated Tax:** {row['Estimated Tax']}")
+                        st.markdown(f"**Net Annual Income:** {row['Net Annual Income']}")
+                        if st.button("📊 Tax Breakdown", key=f"info_{row['Owner']}", help=f"Show tax calculation details for {row['Owner']}"):
                             st.session_state.page = 'tax_details'
                             st.session_state.tax_details = row['tax_details']
                             st.rerun()
 
-                # Household totals
+                # Household totals - restructured to single column layout
                 st.header("Household Summary")
-                col1, col2, col3 = st.columns(3)
                 cashflow_summary = create_cashflow_summary(
                     processed_data['total_net_income'],
                     processed_data['total_expenses']
@@ -429,9 +413,12 @@ def main():
                 # Calculate monthly surplus or deficit
                 monthly_surplus = cashflow_summary['Monthly Surplus']
                 
-                col1.metric("Annual Net Income", cashflow_summary['Total Net Income'])
-                col2.metric("Annual Expenses", cashflow_summary['Total Expenses'])
-                col3.metric("Annual Surplus/Deficit", cashflow_summary['Annual Surplus/Deficit'])
+                # Create a single column for household summary
+                household_col = st.columns(1)[0]
+                with household_col:
+                    st.metric("Annual Household Income", cashflow_summary['Total Net Income'])
+                    st.metric("Annual Household Expenses", cashflow_summary['Total Expenses'])
+                    st.metric("Annual Surplus/Deficit", cashflow_summary['Annual Surplus/Deficit'])
                 
                 # Add sustainability callout
                 st.markdown("---")
