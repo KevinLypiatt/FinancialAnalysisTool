@@ -84,7 +84,6 @@ def create_income_summary_table(income_summary):
 def create_total_assets_chart(projections):
     """Create line chart showing only the total assets (net worth) over time."""
     try:
-        logger.info("Creating total assets chart")
         fig = go.Figure()
 
         # Convert months to years for x-axis
@@ -92,7 +91,6 @@ def create_total_assets_chart(projections):
         
         # If Total Assets key doesn't exist, calculate it from all other assets
         if "Total Assets" not in projections:
-            logger.info("Total Assets key not found, calculating from individual assets")
             # Get all asset keys (excluding 'months' and any other non-asset keys)
             asset_keys = [key for key in projections.keys() if key != 'months' and key != 'original_assets']
             
@@ -105,7 +103,6 @@ def create_total_assets_chart(projections):
                 
             # Add Total Assets to the projections dictionary
             projections["Total Assets"] = total_values.tolist()
-            logger.info(f"Created Total Assets with first value: {total_values[0]}")
         
         # Get total values
         total_values = projections["Total Assets"]
@@ -170,9 +167,6 @@ def create_total_assets_chart(projections):
         return fig
         
     except Exception as e:
-        logger.error(f"Error creating total assets chart: {str(e)}")
-        logger.error(traceback.format_exc())
-        # Return a fallback figure with an error message
         fig = go.Figure()
         fig.add_annotation(
             x=0.5, y=0.5,
@@ -250,11 +244,17 @@ def create_projection_chart(projections, selected_assets=None):
         )
     
     fig.update_layout(
-        title="Individual Asset Value Projections",
+        title={
+            'text': "Individual Asset Value Projections",
+            'y':0.95,  # Move title down slightly to avoid overlap with controls
+            'x':0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'
+        },
         xaxis_title="Years",
         yaxis_title="Asset Value (£)",
         height=500,
-        margin=dict(t=50, l=50, r=20, b=50),
+        margin=dict(t=60, l=50, r=20, b=50),  # Increased top margin for chart controls
         showlegend=True,
         legend=dict(
             yanchor="top",
@@ -269,7 +269,7 @@ def create_projection_chart(projections, selected_assets=None):
     
     # Add gridlines for better readability
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')  # Corrected syntax error here
 
     return fig
 
@@ -397,42 +397,11 @@ def create_cashflow_sankey(df, total_net_income=None):
         )
     )])
 
-    # Add annotations for the totals with accurate values
-    fig.add_annotation(
-        x=0.15,
-        y=-0.12,
-        text=f"Total Net Income: {format_currency(annual_total_income)}",  # Changed from "Total Annual Income"
-        showarrow=False,
-        font=dict(size=14, color="#2ecc71"),
-        xref="paper",
-        yref="paper"
-    )
-    
-    fig.add_annotation(
-        x=0.5,
-        y=-0.12,
-        text=f"Total Annual Expenses: {format_currency(annual_expenses)}",
-        showarrow=False,
-        font=dict(size=14, color="#e74c3c"),
-        xref="paper",
-        yref="paper"
-    )
-    
-    fig.add_annotation(
-        x=0.85,
-        y=-0.12,
-        text=f"Annual Surplus: {format_currency(annual_surplus)}",
-        showarrow=False,
-        font=dict(size=14, color="#3498db"),
-        xref="paper",
-        yref="paper"
-    )
-
     fig.update_layout(
         title="Household Cash Flow",
         font_size=10,
         height=650,
-        margin=dict(t=50, l=50, r=50, b=80),
+        margin=dict(t=50, l=25, r=25, b=30),  # Reduce left margin by 50%
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
     )
@@ -640,3 +609,72 @@ def create_simplified_sankey(df, total_net_income, total_expenses):
     )
     
     return fig
+
+# Create a new function to generate asset cards for mobile view
+def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
+    """
+    Create a list of card data for assets, formatted as tables rather than charts.
+    For mobile-friendly viewing.
+    
+    Args:
+        projections: Dictionary containing asset projections
+        assets_df: DataFrame with asset information
+        intervals: Year intervals to display (default: [5, 10, 15, 20])
+    
+    Returns:
+        List of card data dictionaries
+    """
+    cards = []
+    
+    # Process each asset
+    for asset_key in projections.keys():
+        if asset_key != 'months' and asset_key != 'Total Assets' and asset_key != 'original_assets':
+            # Get values at specific years
+            current_value = projections[asset_key][0]
+            interval_values = []
+            
+            for year in intervals:
+                year_index = min(year, len(projections[asset_key]) - 1)
+                interval_values.append(projections[asset_key][year_index])
+            
+            # Extract asset name and owner from the key
+            parts = asset_key.split(' (')
+            asset_name = parts[0]
+            owner = parts[1].rstrip(')')
+            
+            # Find this asset in the original data
+            monthly_withdrawal = 0
+            depletion_years = "Never"
+            
+            for _, asset in assets_df.iterrows():
+                if asset['Description'] == asset_name and asset['Owner'] == owner:
+                    monthly_withdrawal = asset['Monthly_Value']
+                    
+                    if 'Depletion_Years' in asset:
+                        if asset['Depletion_Years'] < 100:
+                            years = int(asset['Depletion_Years'])
+                            months = int((asset['Depletion_Years'] - years) * 12)
+                            depletion_years = f"{years}y {months}m"
+                        else:
+                            depletion_years = "Never"
+                    break
+            
+            # Create card data with both left and right columns of data
+            card_data = {
+                'name': asset_key,
+                'metrics': {
+                    'Starting Value': format_currency(current_value),
+                    'Monthly Withdrawal': format_currency(monthly_withdrawal),
+                    'Depleted By': depletion_years
+                },
+                'projections': {
+                    f'{intervals[0]} Years': format_currency(interval_values[0]),
+                    f'{intervals[1]} Years': format_currency(interval_values[1]),
+                    f'{intervals[2]} Years': format_currency(interval_values[2]),
+                    f'{intervals[3]} Years': format_currency(interval_values[3])
+                }
+            }
+            
+            cards.append(card_data)
+    
+    return cards

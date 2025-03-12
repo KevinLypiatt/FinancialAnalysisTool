@@ -56,7 +56,8 @@ try:
         create_cashflow_sankey,
         format_currency,
         create_asset_projection_table,
-        create_total_assets_chart
+        create_total_assets_chart,
+        create_asset_cards  # Keep only this function, removing create_single_asset_chart
     )
     from utils.ai_chat import render_chat_interface
     logger.info("Successfully imported all modules")
@@ -552,10 +553,9 @@ def main():
                     use_container_width=True
                 )
                 
-                # Add the new asset projection table
-                st.subheader("Asset Value Forecast Table")
+                # Asset Value Forecast Table - either cards or table based on mobile view
+                st.subheader("Asset Value Forecast")
                 
-                # Create the projection table if available
                 if 'asset_projections' in processed_data:
                     # Get the asset projections
                     asset_projections = processed_data['asset_projections']
@@ -563,26 +563,83 @@ def main():
                     # Store original assets for reference in the table creation
                     asset_projections['original_assets'] = processed_data['assets']
                     
-                    # Create the table with intervals at 5, 10, 15, and 20 years
-                    projection_table = create_asset_projection_table(asset_projections)
+                    # Create a container for the mobile view toggle
+                    with st.sidebar:
+                        # Add a toggle for mobile view 
+                        is_mobile = st.checkbox("Enable Card View", value=False)
                     
-                    # Format the currency columns
-                    for col in projection_table.columns:
-                        if col not in ['Asset', 'Growth Rate', 'Withdrawal Rate']:
-                            projection_table[col] = projection_table[col].apply(lambda x: f"£{x:,.0f}")
-                    
-                    # Display the table
-                    st.dataframe(
-                        projection_table,
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                    
-                    # Add a note about the projections
-                    st.caption("""
-                    This table shows projected asset values at 5-year intervals based on current growth rates and withdrawal levels.
-                    The 'Withdrawal Rate' is calculated as annual withdrawals divided by current value.
-                    """)
+                    if is_mobile:
+                        # Generate cards with tables instead of charts
+                        asset_cards = create_asset_cards(projections, processed_data['assets'])
+                        
+                        # Add custom CSS for better card styling
+                        st.markdown("""
+                        <style>
+                        .asset-card-title {
+                            font-size: 1.3rem;
+                            font-weight: bold;
+                            padding-bottom: 10px;
+                        }
+                        .card-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                        }
+                        .card-table th {
+                            text-align: left;
+                            font-weight: bold;
+                            padding: 5px;
+                            border-bottom: 1px solid #ddd;
+                        }
+                        .card-table td {
+                            padding: 5px;
+                            border-bottom: 1px solid #eee;
+                        }
+                        </style>
+                        """, unsafe_allow_html=True)
+                        
+                        # Display cards in a 1-column layout
+                        for card in asset_cards:
+                            with st.expander(card['name'], expanded=True):
+                                # Display asset name in large bold font
+                                st.markdown(f"<div class='asset-card-title'>{card['name']}</div>", unsafe_allow_html=True)
+                                
+                                # Create two columns for the card content
+                                col1, col2 = st.columns(2)
+                                
+                                # Left column - metrics
+                                with col1:
+                                    st.markdown("### Key Metrics")
+                                    metrics_data = [[k, v] for k, v in card['metrics'].items()]
+                                    st.table(pd.DataFrame(metrics_data, columns=["Metric", "Value"]))
+                                
+                                # Right column - projections
+                                with col2:
+                                    st.markdown("### Projections")
+                                    projections_data = [[k, v] for k, v in card['projections'].items()]
+                                    st.table(pd.DataFrame(projections_data, columns=["Year", "Value"]))
+                                
+                    else:
+                        # Use the standard table for desktop
+                        # Create the table with intervals at 5, 10, 15, and 20 years
+                        projection_table = create_asset_projection_table(asset_projections)
+                        
+                        # Format the currency columns
+                        for col in projection_table.columns:
+                            if col not in ['Asset', 'Growth Rate', 'Withdrawal Rate']:
+                                projection_table[col] = projection_table[col].apply(lambda x: f"£{x:,.0f}")
+                        
+                        # Display the table
+                        st.dataframe(
+                            projection_table,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        
+                        # Add a note about the projections
+                        st.caption("""
+                        This table shows projected asset values at 5-year intervals based on current growth rates and withdrawal levels.
+                        The 'Withdrawal Rate' is calculated as annual withdrawals divided by current value.
+                        """)
                 else:
                     st.info("Detailed asset projections not available.")
 
@@ -654,12 +711,6 @@ def main():
                 # Only show the chat interface if the user has clicked to reveal it
                 if st.session_state.show_chat:
                     render_chat_interface(processed_data)
-
-                # Add file structure viewer
-                if st.sidebar.checkbox("Show File Structure (Debug)"):
-                    st.subheader("File Structure")
-                    file_structure = list_files("/opt/render/project/src")
-                    st.code("\n".join(file_structure))
 
             except Exception as e:
                 logger.error(f"Error in main application: {str(e)}")
