@@ -2,8 +2,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 import pandas as pd
-# Add imports for Dash components used in mobile views
-from dash import html, dcc
+# Remove the Dash imports that are causing the error
+# from dash import html, dcc
 
 def format_currency(value):
     """Format number as UK currency string."""
@@ -514,36 +514,7 @@ def create_asset_projection_table(asset_projections, intervals=[5, 10, 15, 20]):
     
     return table_df
 
-# Add a new function to create asset cards for mobile view
-def create_asset_card(asset_name, asset_data, projections, width="100%"):
-    """
-    Create a card for a single asset for small screen display.
-    
-    Args:
-        asset_name: Name of the asset
-        asset_data: Dictionary of asset data (current value, growth rate, etc.)
-        projections: Dictionary with projection data for this asset
-        width: Width of the card
-    """
-    # Create the card layout with key metrics as rows
-    card = html.Div([
-        html.H4(asset_name, className="card-title"),
-        html.Div([
-            html.Div(["Current Value:", html.Span(format_currency(asset_data["Current Value"]))]),
-            html.Div(["Growth Rate:", html.Span(asset_data["Growth Rate"])]),
-            html.Div(["Withdrawal Rate:", html.Span(asset_data["Withdrawal Rate"])])
-        ], className="asset-metrics"),
-        
-        # Add small line chart showing just this asset's projection
-        dcc.Graph(
-            figure=create_single_asset_chart(projections, asset_name),
-            config={'displayModeBar': False},
-            style={"height": "120px"}
-        )
-    ], className="asset-card", style={"width": width})
-    
-    return card
-
+# Replace the Dash-specific mobile visualization functions with Streamlit-compatible versions
 def create_single_asset_chart(projections, asset_name):
     """Create a small line chart for a single asset with fixed 20-year scale."""
     fig = go.Figure()
@@ -582,6 +553,27 @@ def create_single_asset_chart(projections, asset_name):
     )
     
     return fig
+
+# Replace Dash HTML components with Streamlit compatible function
+def create_asset_card_data(asset_name, asset_data, projections):
+    """
+    Create data for a single asset card for small screen display.
+    
+    Args:
+        asset_name: Name of the asset
+        asset_data: Dictionary of asset data (current value, growth rate, etc.)
+        projections: Dictionary with projection data for this asset
+        
+    Returns:
+        Dictionary with asset data ready for display
+    """
+    return {
+        'name': asset_name,
+        'current_value': format_currency(asset_data["Current Value"]),
+        'growth_rate': asset_data["Growth Rate"],
+        'withdrawal_rate': asset_data["Withdrawal Rate"],
+        'chart': create_single_asset_chart(projections, asset_name)
+    }
 
 def create_simplified_sankey(df, total_net_income, total_expenses):
     """Create simplified Sankey diagram for small screens showing just totals."""
