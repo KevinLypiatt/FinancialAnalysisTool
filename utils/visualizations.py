@@ -638,12 +638,18 @@ def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
             monthly_withdrawal = 0
             depletion_years = "Never"
             starting_value = 0
+            growth_rate_display = "N/A"
             
             # Find the matching asset in the DataFrame
             for _, asset in assets_df.iterrows():
                 if asset['Description'] == asset_name and asset['Owner'] == owner:
                     monthly_withdrawal = asset['Monthly_Value']
                     starting_value = asset['Capital_Value']  # Get the starting value from assets_df
+                    
+                    growth_rate = asset['Growth_Rate']
+                    if isinstance(growth_rate, str):
+                        growth_rate = float(growth_rate.strip('%').replace(',', '')) / 100
+                    growth_rate_display = f"{growth_rate:.1%}"
                     
                     if 'Depletion_Years' in asset:
                         if asset['Depletion_Years'] < 100:
@@ -668,6 +674,7 @@ def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
             # Create card data with both left and right columns of data
             metrics = {
                 'Starting Value': format_currency(starting_value),
+                'Growth Rate': growth_rate_display,
                 'Monthly Withdrawal': format_currency(monthly_withdrawal),
                 'Depleted By': depletion_years
             }

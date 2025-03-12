@@ -519,9 +519,9 @@ def main():
                 # Use columns for a more compact layout suitable for tablets
                 asset_columns = st.columns(3)  # 3 columns for tablets, can adjust for mobile later
                 
-                # If there's no selection in session_state, initialize with all assets selected
+                # If there's no selection in session_state, initialize with no assets selected (changed from all)
                 if 'selected_assets' not in st.session_state:
-                    st.session_state.selected_assets = all_assets.copy()
+                    st.session_state.selected_assets = []
                 
                 # Add select all / none buttons
                 select_col1, select_col2, _ = st.columns([1, 1, 4])
@@ -553,6 +553,9 @@ def main():
                     use_container_width=True
                 )
                 
+                # Move card view toggle from sidebar to main page
+                is_mobile = st.checkbox("Card View", value=False)
+                
                 # Asset Value Forecast Table - either cards or table based on mobile view
                 st.subheader("Asset Value Forecast")
                 
@@ -563,10 +566,7 @@ def main():
                     # Store original assets for reference in the table creation
                     asset_projections['original_assets'] = processed_data['assets']
                     
-                    # Create a container for the mobile view toggle
-                    with st.sidebar:
-                        # Add a toggle for mobile view 
-                        is_mobile = st.checkbox("Enable Card View", value=False)
+                    # Removed: sidebar container for mobile view toggle
                     
                     if is_mobile:
                         # Generate cards with tables instead of charts
@@ -582,7 +582,7 @@ def main():
                             margin-top: 0;
                         }
                         .card-column-header {
-                            font-size: 0.9rem;
+                            font-size: 1.1rem;  /* Increased font size for Projections header */
                             font-weight: 600;
                             color: #555;
                             margin-bottom: 8px;
@@ -603,8 +603,8 @@ def main():
                         
                         # Display cards in a 1-column layout
                         for card in asset_cards:
-                            with st.expander(card['name'], expanded=True):
-                                # Display only the asset name in large bold font (no expander title)
+                            with st.expander("", expanded=True):  # Remove the small asset name
+                                # Display only the asset name in large bold font
                                 st.markdown(f"<div class='asset-card-title'>{card['name']}</div>", unsafe_allow_html=True)
                                 
                                 # Create two columns for the card content
@@ -615,15 +615,16 @@ def main():
                                     st.markdown("<div class='card-column-header'>Key Metrics</div>", unsafe_allow_html=True)
                                     # Apply the stTable class to enable CSS targeting
                                     st.markdown("<div class='stTable'>", unsafe_allow_html=True)
-                                    st.table(card['metrics'])
+                                    st.table(pd.DataFrame(card['metrics'].items(), columns=["Metric", "Value"]).set_index("Metric"))
                                     st.markdown("</div>", unsafe_allow_html=True)
                                 
-                                # Right column - projections with smaller header
+                                # Right column - projections with larger header
                                 with col2:
                                     st.markdown("<div class='card-column-header'>Projections</div>", unsafe_allow_html=True)
                                     # Apply the stTable class to enable CSS targeting
                                     st.markdown("<div class='stTable'>", unsafe_allow_html=True)
-                                    st.table(card['projections'])
+                                    # Fix: Explicitly define column names when creating the DataFrame
+                                    st.table(pd.DataFrame(card['projections'].items(), columns=["Year", "Value"]).set_index("Year"))
                                     st.markdown("</div>", unsafe_allow_html=True)
                     else:
                         # Use the standard table for desktop
@@ -657,9 +658,16 @@ def main():
                     depletion_data = []
                     for _, asset in assets.iterrows():
                         monthly_value = asset['Monthly_Value']
+                        # Handle growth rate formatting safely whether it's a string or numeric
+                        if isinstance(asset['Growth_Rate'], str):
+                            growth_rate_display = asset['Growth_Rate']  # Already formatted as string
+                        else:
+                            growth_rate_display = f"{asset['Growth_Rate'] * 100:.2f}%"  # Format numeric value
+                            
                         depletion_data.append({
                             'Asset': f"{asset['Description']} ({asset['Owner']})",
                             'Starting Value': format_currency(asset['Capital_Value']),
+                            'Growth Rate': growth_rate_display,
                             'Monthly Withdrawal': format_currency(monthly_value),
                             'Annual Withdrawal': format_currency(monthly_value * 12),
                             'Years until Depletion': f"{asset['Depletion_Years']:.2f}" if asset['Depletion_Years'] < 100 else "Never"
