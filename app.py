@@ -7,7 +7,8 @@ from utils.visualizations import (
     create_cashflow_summary,
     create_cashflow_sankey,
     format_currency,
-    create_asset_projection_table  # Add this import
+    create_asset_projection_table,
+    create_total_assets_chart  # Add this import
 )
 from utils.ai_chat import render_chat_interface  # Add this import
 
@@ -438,11 +439,60 @@ def main():
 
             # Asset projections section
             st.header("Asset Projections")
-            years = st.slider("Chart Projection Period (Years)", min_value=1, max_value=30, value=20)  # Changed default from 10 to 20
+            years = st.slider("Chart Projection Period (Years)", min_value=1, max_value=30, value=20)
 
+            # Calculate projections based on selected years
             projections = calculate_projections(processed_data['df'], years)
+            
+            # Show the total assets (net worth) chart with the same time scale
             st.plotly_chart(
-                create_projection_chart(projections),
+                create_total_assets_chart(projections),
+                use_container_width=True
+            )
+            
+            # Then add the asset selector and individual asset chart
+            st.subheader("Individual Asset Projections")
+            
+            # Get all available asset names (excluding 'months' and 'Total Assets')
+            all_assets = [key for key in projections.keys() if key != 'months' and key != 'Total Assets']
+            
+            # Create asset selection interface
+            st.write("Select assets to display:")
+            
+            # Use columns for a more compact layout suitable for tablets
+            asset_columns = st.columns(3)  # 3 columns for tablets, can adjust for mobile later
+            
+            # If there's no selection in session_state, initialize with all assets selected
+            if 'selected_assets' not in st.session_state:
+                st.session_state.selected_assets = all_assets.copy()
+            
+            # Add select all / none buttons
+            select_col1, select_col2, _ = st.columns([1, 1, 4])
+            with select_col1:
+                if st.button("Select All"):
+                    st.session_state.selected_assets = all_assets.copy()
+                    st.rerun()
+            with select_col2:
+                if st.button("Select None"):
+                    st.session_state.selected_assets = []
+                    st.rerun()
+            
+            # Create checkboxes for each asset
+            selected_assets = []
+            for i, asset in enumerate(all_assets):
+                col_idx = i % 3  # Distribute across 3 columns
+                with asset_columns[col_idx]:
+                    # Use the current selection state from session_state
+                    is_selected = st.checkbox(asset, value=asset in st.session_state.selected_assets, key=f"asset_{i}")
+                    if is_selected:
+                        selected_assets.append(asset)
+            
+            # Update session state with current selection
+            st.session_state.selected_assets = selected_assets
+            
+            # Show the chart with only selected assets - using the same time scale as defined by the slider
+            st.plotly_chart(
+                create_projection_chart(projections, selected_assets),
                 use_container_width=True
             )
             
@@ -559,3 +609,17 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+if __name__ == '__main__':
+    import os
+    
+    # This configuration works with Render and other cloud platforms
+    # It uses environment variables with sensible defaults
+    port = int(os.environ.get('PORT', 8080))
+    debug = os.environ.get('DEBUG', 'False').lower() == 'true'
+    
+    app.run_server(
+        host='0.0.0.0',  # Required to allow external connections
+        port=port,       # Use PORT environment variable or default to 8080
+        debug=debug      # Control debug mode with environment variable
+    )

@@ -1,7 +1,9 @@
 import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
-import pandas as pd  # Add pandas import at the top
+import pandas as pd
+# Add imports for Dash components used in mobile views
+from dash import html, dcc
 
 def format_currency(value):
     """Format number as UK currency string."""
@@ -72,12 +74,101 @@ def create_income_summary_table(income_summary):
             })
     return rows
 
-def create_projection_chart(projections):
-    """Create line chart showing individual asset projections."""
+def create_total_assets_chart(projections):
+    """Create line chart showing only the total assets (net worth) over time."""
+    fig = go.Figure()
+
+    # Convert months to years for x-axis
+    years = [m/12 for m in projections['months']]
+    
+    # If Total Assets key doesn't exist, calculate it from all other assets
+    if "Total Assets" not in projections:
+        # Get all asset keys (excluding 'months' and any other non-asset keys)
+        asset_keys = [key for key in projections.keys() if key != 'months' and key != 'original_assets']
+        
+        # Initialize total_values with zeros
+        total_values = np.zeros(len(projections['months']))
+        
+        # Sum up all asset values
+        for key in asset_keys:
+            total_values += np.array(projections[key])
+            
+        # Add Total Assets to the projections dictionary
+        projections["Total Assets"] = total_values.tolist()
+    
+    # Get total values
+    total_values = projections["Total Assets"]
+    
+    # Add the total assets line
+    fig.add_trace(go.Scatter(
+        x=years,
+        y=total_values,
+        mode='lines',
+        name="Total Assets",
+        line=dict(
+            width=4,  # Slightly thicker for emphasis
+            color='#2c3e50'  # Dark blue for the total line
+        ),
+        fill='tozeroy',  # Add area fill below the line
+        fillcolor='rgba(44, 62, 80, 0.1)'  # Light fill color
+    ))
+    
+    # Add markers at key year points (0, 5, 10, 15, 20, 25)
+    year_markers = [0, 5, 10, 15, 20, 25]
+    marker_years = []
+    marker_values = []
+    
+    for year in year_markers:
+        if year * 12 < len(projections['months']):
+            marker_years.append(year)
+            month_index = year * 12
+            marker_values.append(total_values[month_index])
+    
+    # Add markers at key years
+    fig.add_trace(go.Scatter(
+        x=marker_years,
+        y=marker_values,
+        mode='markers',
+        name='Key Years',
+        marker=dict(
+            size=10,
+            color='#2c3e50',
+            line=dict(width=2, color='white')
+        ),
+        hovertemplate='Year %{x}<br>Value: £%{y:,.0f}<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title="Net Worth Projection",
+        xaxis_title="Years",
+        yaxis_title="Total Asset Value (£)",
+        height=350,  # Smaller height than the detailed chart
+        margin=dict(t=50, l=50, r=20, b=20),
+        showlegend=False,  # No legend needed for a single line
+        yaxis_tickformat='£,.0f',
+        yaxis=dict(rangemode='tozero'),  # Force y-axis to start at zero
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        hovermode='x unified'
+    )
+    
+    # Add gridlines for better readability
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+
+    return fig
+
+def create_projection_chart(projections, selected_assets=None):
+    """
+    Create line chart showing individual asset projections.
+    
+    Args:
+        projections: Dictionary containing asset projections
+        selected_assets: List of asset names to display (None for all assets)
+    """
     fig = go.Figure()
 
     # Define a custom color palette with more vibrant, high-contrast colors
-    # Avoid light colors like yellow that don't show up well
     custom_colors = [
         '#1f77b4',  # Strong blue
         '#d62728',  # Brick red
@@ -96,36 +187,60 @@ def create_projection_chart(projections):
     # Convert months to years for x-axis
     years = [m/12 for m in projections['months']]
 
-    # Add line for each individual asset
-    for i, (key, values) in enumerate(projections.items()):
-        if key != 'months':
+    # Collect all available asset keys (excluding 'months' and 'Total Assets')
+    all_asset_keys = [key for key in projections.keys() 
+                     if key != 'months' and key != 'Total Assets' and key != 'original_assets']
+    
+    # Normalize selected_assets handling to ensure consistent behavior
+    if selected_assets is None or not isinstance(selected_assets, list) or len(selected_assets) == 0:
+        # Always treat empty/None as an empty selection
+        valid_selected_assets = []
+    else:
+        # Filter out any assets that don't exist in the data
+        valid_selected_assets = [asset for asset in selected_assets if asset in all_asset_keys]
+    
+    # Add line for each selected asset (using valid selections only)
+    for i, key in enumerate(all_asset_keys):
+        if key in valid_selected_assets:
             fig.add_trace(go.Scatter(
                 x=years,
-                y=values,
+                y=projections[key],
                 mode='lines',
                 name=key,
                 line=dict(
-                    width=3,  # Keep the increased line width
+                    width=3,
                     color=custom_colors[i % len(custom_colors)]
                 )
             ))
 
+    # Update layout with empty placeholder when no assets selected
+    if not valid_selected_assets:
+        fig.add_annotation(
+            x=0.5,
+            y=0.5,
+            text="No assets selected. Use the checkboxes above to select assets to display.",
+            showarrow=False,
+            font=dict(size=14, color="#7f7f7f"),
+            xref="paper",
+            yref="paper"
+        )
+    
     fig.update_layout(
         title="Individual Asset Value Projections",
         xaxis_title="Years",
         yaxis_title="Asset Value (£)",
-        height=600,
+        height=500,
         margin=dict(t=50, l=50, r=20, b=50),
         showlegend=True,
         legend=dict(
             yanchor="top",
             y=0.99,
-            xanchor="right",  # Changed from "left" to "right"
-            x=0.99           # Changed from 0.01 to 0.99
+            xanchor="right",
+            x=0.99
         ),
         yaxis_tickformat='£,.0f',
-        plot_bgcolor='white',  # White background for better contrast
-        paper_bgcolor='white'  # White surrounding area
+        plot_bgcolor='white',
+        paper_bgcolor='white'
     )
     
     # Add gridlines for better readability
@@ -398,3 +513,114 @@ def create_asset_projection_table(asset_projections, intervals=[5, 10, 15, 20]):
         table_df = table_df.sort_values('sort_order').drop('sort_order', axis=1)
     
     return table_df
+
+# Add a new function to create asset cards for mobile view
+def create_asset_card(asset_name, asset_data, projections, width="100%"):
+    """
+    Create a card for a single asset for small screen display.
+    
+    Args:
+        asset_name: Name of the asset
+        asset_data: Dictionary of asset data (current value, growth rate, etc.)
+        projections: Dictionary with projection data for this asset
+        width: Width of the card
+    """
+    # Create the card layout with key metrics as rows
+    card = html.Div([
+        html.H4(asset_name, className="card-title"),
+        html.Div([
+            html.Div(["Current Value:", html.Span(format_currency(asset_data["Current Value"]))]),
+            html.Div(["Growth Rate:", html.Span(asset_data["Growth Rate"])]),
+            html.Div(["Withdrawal Rate:", html.Span(asset_data["Withdrawal Rate"])])
+        ], className="asset-metrics"),
+        
+        # Add small line chart showing just this asset's projection
+        dcc.Graph(
+            figure=create_single_asset_chart(projections, asset_name),
+            config={'displayModeBar': False},
+            style={"height": "120px"}
+        )
+    ], className="asset-card", style={"width": width})
+    
+    return card
+
+def create_single_asset_chart(projections, asset_name):
+    """Create a small line chart for a single asset with fixed 20-year scale."""
+    fig = go.Figure()
+    
+    # Only show data up to 20 years (240 months) if available
+    max_months = min(240, len(projections['months']))
+    years = [m/12 for m in projections['months'][:max_months]]
+    
+    if asset_name in projections:
+        values = projections[asset_name][:max_months]
+        
+        fig.add_trace(go.Scatter(
+            x=years,
+            y=values,
+            mode='lines',
+            name=asset_name,
+            line=dict(width=2),
+            fill='tozeroy'
+        ))
+    
+    # Simplified layout for small chart
+    fig.update_layout(
+        margin=dict(t=10, l=10, r=10, b=10),
+        height=120,
+        showlegend=False,
+        xaxis=dict(
+            showticklabels=False,
+            showgrid=False,
+            range=[0, 20]  # Fixed 20-year scale
+        ),
+        yaxis=dict(
+            showticklabels=False,
+            showgrid=False
+        ),
+        plot_bgcolor='white'
+    )
+    
+    return fig
+
+def create_simplified_sankey(df, total_net_income, total_expenses):
+    """Create simplified Sankey diagram for small screens showing just totals."""
+    fig = go.Figure(data=[go.Sankey(
+        arrangement="snap",
+        node=dict(
+            pad=15,
+            thickness=20,
+            line=dict(color="black", width=0.5),
+            label=["Total Income", "Household Budget", "Total Expenses"],
+            color=["#2ecc71", "#3498db", "#e74c3c"]
+        ),
+        link=dict(
+            source=[0, 1],  # Total Income → Budget → Expenses
+            target=[1, 2],
+            value=[total_net_income/12, total_expenses/12],  # Using monthly values for better scale
+            color=["rgba(46, 204, 113, 0.3)", "rgba(231, 76, 60, 0.3)"]
+        )
+    )])
+    
+    surplus = total_net_income - total_expenses
+    
+    fig.update_layout(
+        title="Simplified Cash Flow",
+        height=300,
+        margin=dict(t=30, l=10, r=10, b=60),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+    )
+    
+    # Add annotation for surplus/deficit
+    fig.add_annotation(
+        x=0.5, 
+        y=-0.1,
+        text=f"Annual Surplus/Deficit: {format_currency(surplus)}",
+        showarrow=False,
+        font=dict(size=14, color="#3498db" if surplus >= 0 else "#e74c3c"),
+        xref="paper",
+        yref="paper"
+    )
+    
+    return fig
