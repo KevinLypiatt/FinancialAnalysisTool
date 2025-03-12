@@ -5,6 +5,8 @@ import pandas as pd
 import sys
 import traceback
 import logging
+import os
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -14,6 +16,36 @@ logger = logging.getLogger(__name__)
 
 # Log startup information
 logger.info("Starting Financial Analysis Tool application")
+
+# Create secrets from environment variables
+try:
+    # Check if we're running on Render (production environment)
+    is_render = os.environ.get('RENDER') == 'true'
+    logger.info(f"Running on Render: {is_render}")
+    
+    if is_render:
+        # Create .streamlit directory if it doesn't exist 
+        os.makedirs('/opt/render/project/src/.streamlit', exist_ok=True)
+        
+        # Create secrets.toml file with content from environment variables
+        with open('/opt/render/project/src/.streamlit/secrets.toml', 'w') as f:
+            # Add Perplexity API key
+            perplexity_key = os.environ.get('PERPLEXITY_API_KEY')
+            if perplexity_key:
+                logger.info("Found PERPLEXITY_API_KEY in environment variables")
+                f.write(f'[perplexity]\napi_key = "{perplexity_key}"\n\n')
+            
+            # Add other secrets as needed
+            # For example, OpenAI API key if used
+            openai_key = os.environ.get('OPENAI_API_KEY') 
+            if openai_key:
+                logger.info("Found OPENAI_API_KEY in environment variables")
+                f.write(f'[openai]\napi_key = "{openai_key}"\n\n')
+        
+        logger.info("Successfully created secrets.toml file from environment variables")
+except Exception as e:
+    logger.error(f"Error setting up secrets from environment variables: {str(e)}")
+    logger.error(traceback.format_exc())
 
 try:
     from utils.data_processor import process_data, calculate_projections
@@ -281,6 +313,17 @@ def calculate_sustainability(assets_df, monthly_surplus):
         detailed += " Consider reducing expenses or finding additional income sources to extend financial sustainability."
     
     return years_until_depletion, message, detailed
+
+def list_files(startpath):
+    file_list = []
+    for root, dirs, files in os.walk(startpath):
+        level = root.replace(startpath, '').count(os.sep)
+        indent = ' ' * 4 * level
+        file_list.append(f"{indent}{os.path.basename(root)}/")
+        subindent = ' ' * 4 * (level + 1)
+        for f in files:
+            file_list.append(f"{subindent}{f}")
+    return file_list
 
 def main():
     try:
@@ -624,6 +667,12 @@ def main():
                 # Only show the chat interface if the user has clicked to reveal it
                 if st.session_state.show_chat:
                     render_chat_interface(processed_data)
+
+                # Add file structure viewer
+                if st.sidebar.checkbox("Show File Structure (Debug)"):
+                    st.subheader("File Structure")
+                    file_structure = list_files("/opt/render/project/src")
+                    st.code("\n".join(file_structure))
 
             except Exception as e:
                 logger.error(f"Error in main application: {str(e)}")
