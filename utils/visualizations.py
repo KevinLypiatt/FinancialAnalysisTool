@@ -2,12 +2,19 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 import pandas as pd
-# Remove the Dash imports that are causing the error
-# from dash import html, dcc
+import logging
+import traceback
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 def format_currency(value):
     """Format number as UK currency string."""
-    return f"£{value:,.2f}"
+    try:
+        return f"£{value:,.2f}"
+    except Exception as e:
+        logger.error(f"Error formatting currency: {str(e)}")
+        return f"£{value}"
 
 def get_tax_breakdown(gross_income):
     """Calculate detailed tax breakdown for an individual."""
@@ -76,87 +83,104 @@ def create_income_summary_table(income_summary):
 
 def create_total_assets_chart(projections):
     """Create line chart showing only the total assets (net worth) over time."""
-    fig = go.Figure()
+    try:
+        logger.info("Creating total assets chart")
+        fig = go.Figure()
 
-    # Convert months to years for x-axis
-    years = [m/12 for m in projections['months']]
-    
-    # If Total Assets key doesn't exist, calculate it from all other assets
-    if "Total Assets" not in projections:
-        # Get all asset keys (excluding 'months' and any other non-asset keys)
-        asset_keys = [key for key in projections.keys() if key != 'months' and key != 'original_assets']
+        # Convert months to years for x-axis
+        years = [m/12 for m in projections['months']]
         
-        # Initialize total_values with zeros
-        total_values = np.zeros(len(projections['months']))
-        
-        # Sum up all asset values
-        for key in asset_keys:
-            total_values += np.array(projections[key])
+        # If Total Assets key doesn't exist, calculate it from all other assets
+        if "Total Assets" not in projections:
+            logger.info("Total Assets key not found, calculating from individual assets")
+            # Get all asset keys (excluding 'months' and any other non-asset keys)
+            asset_keys = [key for key in projections.keys() if key != 'months' and key != 'original_assets']
             
-        # Add Total Assets to the projections dictionary
-        projections["Total Assets"] = total_values.tolist()
-    
-    # Get total values
-    total_values = projections["Total Assets"]
-    
-    # Add the total assets line
-    fig.add_trace(go.Scatter(
-        x=years,
-        y=total_values,
-        mode='lines',
-        name="Total Assets",
-        line=dict(
-            width=4,  # Slightly thicker for emphasis
-            color='#2c3e50'  # Dark blue for the total line
-        ),
-        fill='tozeroy',  # Add area fill below the line
-        fillcolor='rgba(44, 62, 80, 0.1)'  # Light fill color
-    ))
-    
-    # Add markers at key year points (0, 5, 10, 15, 20, 25)
-    year_markers = [0, 5, 10, 15, 20, 25]
-    marker_years = []
-    marker_values = []
-    
-    for year in year_markers:
-        if year * 12 < len(projections['months']):
-            marker_years.append(year)
-            month_index = year * 12
-            marker_values.append(total_values[month_index])
-    
-    # Add markers at key years
-    fig.add_trace(go.Scatter(
-        x=marker_years,
-        y=marker_values,
-        mode='markers',
-        name='Key Years',
-        marker=dict(
-            size=10,
-            color='#2c3e50',
-            line=dict(width=2, color='white')
-        ),
-        hovertemplate='Year %{x}<br>Value: £%{y:,.0f}<extra></extra>'
-    ))
+            # Initialize total_values with zeros
+            total_values = np.zeros(len(projections['months']))
+            
+            # Sum up all asset values
+            for key in asset_keys:
+                total_values += np.array(projections[key])
+                
+            # Add Total Assets to the projections dictionary
+            projections["Total Assets"] = total_values.tolist()
+            logger.info(f"Created Total Assets with first value: {total_values[0]}")
+        
+        # Get total values
+        total_values = projections["Total Assets"]
+        
+        # Add the total assets line
+        fig.add_trace(go.Scatter(
+            x=years,
+            y=total_values,
+            mode='lines',
+            name="Total Assets",
+            line=dict(
+                width=4,  # Slightly thicker for emphasis
+                color='#2c3e50'  # Dark blue for the total line
+            ),
+            fill='tozeroy',  # Add area fill below the line
+            fillcolor='rgba(44, 62, 80, 0.1)'  # Light fill color
+        ))
+        
+        # Add markers at key year points (0, 5, 10, 15, 20, 25)
+        year_markers = [0, 5, 10, 15, 20, 25]
+        marker_years = []
+        marker_values = []
+        
+        for year in year_markers:
+            if year * 12 < len(projections['months']):
+                marker_years.append(year)
+                month_index = year * 12
+                marker_values.append(total_values[month_index])
+        
+        # Add markers at key years
+        fig.add_trace(go.Scatter(
+            x=marker_years,
+            y=marker_values,
+            mode='markers',
+            name='Key Years',
+            marker=dict(
+                size=10,
+                color='#2c3e50',
+                line=dict(width=2, color='white')
+            ),
+            hovertemplate='Year %{x}<br>Value: £%{y:,.0f}<extra></extra>'
+        ))
 
-    fig.update_layout(
-        title="Net Worth Projection",
-        xaxis_title="Years",
-        yaxis_title="Total Asset Value (£)",
-        height=350,  # Smaller height than the detailed chart
-        margin=dict(t=50, l=50, r=20, b=20),
-        showlegend=False,  # No legend needed for a single line
-        yaxis_tickformat='£,.0f',
-        yaxis=dict(rangemode='tozero'),  # Force y-axis to start at zero
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        hovermode='x unified'
-    )
-    
-    # Add gridlines for better readability
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+        fig.update_layout(
+            title="Net Worth Projection",
+            xaxis_title="Years",
+            yaxis_title="Total Asset Value (£)",
+            height=350,  # Smaller height than the detailed chart
+            margin=dict(t=50, l=50, r=20, b=20),
+            showlegend=False,  # No legend needed for a single line
+            yaxis_tickformat='£,.0f',
+            yaxis=dict(rangemode='tozero'),  # Force y-axis to start at zero
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            hovermode='x unified'
+        )
+        
+        # Add gridlines for better readability
+        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
 
-    return fig
+        return fig
+        
+    except Exception as e:
+        logger.error(f"Error creating total assets chart: {str(e)}")
+        logger.error(traceback.format_exc())
+        # Return a fallback figure with an error message
+        fig = go.Figure()
+        fig.add_annotation(
+            x=0.5, y=0.5,
+            text=f"Error creating chart: {str(e)}",
+            showarrow=False,
+            font=dict(size=14, color="red")
+        )
+        return fig
 
 def create_projection_chart(projections, selected_assets=None):
     """

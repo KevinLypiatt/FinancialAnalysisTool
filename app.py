@@ -1,16 +1,39 @@
+# Add improved error handling and logging
+
 import streamlit as st
 import pandas as pd
-from utils.data_processor import process_data, calculate_projections
-from utils.visualizations import (
-    create_projection_chart,
-    create_income_summary_table,
-    create_cashflow_summary,
-    create_cashflow_sankey,
-    format_currency,
-    create_asset_projection_table,
-    create_total_assets_chart  # Add this import
-)
-from utils.ai_chat import render_chat_interface  # Add this import
+import sys
+import traceback
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                   stream=sys.stdout)
+logger = logging.getLogger(__name__)
+
+# Log startup information
+logger.info("Starting Financial Analysis Tool application")
+
+try:
+    from utils.data_processor import process_data, calculate_projections
+    from utils.visualizations import (
+        create_projection_chart,
+        create_income_summary_table,
+        create_cashflow_summary,
+        create_cashflow_sankey,
+        format_currency,
+        create_asset_projection_table,
+        create_total_assets_chart
+    )
+    from utils.ai_chat import render_chat_interface
+    logger.info("Successfully imported all modules")
+except Exception as e:
+    logger.error(f"Error importing modules: {str(e)}")
+    logger.error(traceback.format_exc())
+    st.error(f"Failed to import required modules: {str(e)}")
+    st.error(traceback.format_exc())
+    st.stop()
 
 st.set_page_config(page_title="Financial Analysis Tool", layout="wide")
 
@@ -260,366 +283,368 @@ def calculate_sustainability(assets_df, monthly_surplus):
     return years_until_depletion, message, detailed
 
 def main():
-    # Initialize session state for navigation and data
-    if 'page' not in st.session_state:
-        st.session_state.page = 'main'
-        st.session_state.tax_details = None
-        st.session_state.processed_data = None
-        st.session_state.uploaded_file = None
-        st.session_state.df = None
+    try:
+        logger.info("Starting main application function")
         
-    # Initialize chat history if it doesn't exist
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []
+        # Initialize session state for navigation and data
+        if 'page' not in st.session_state:
+            st.session_state.page = 'main'
+            st.session_state.tax_details = None
+            st.session_state.processed_data = None
+            st.session_state.uploaded_file = None
+            st.session_state.df = None
+            
+        # Initialize chat history if it doesn't exist
+        if 'chat_history' not in st.session_state:
+            st.session_state.chat_history = []
 
-    if st.session_state.page == 'tax_details':
-        st.button("← Back to Dashboard", on_click=lambda: setattr(st.session_state, 'page', 'main'))
-        show_tax_details(st.session_state.tax_details)
-        return
+        if st.session_state.page == 'tax_details':
+            st.button("← Back to Dashboard", on_click=lambda: setattr(st.session_state, 'page', 'main'))
+            show_tax_details(st.session_state.tax_details)
+            return
 
-    st.title("Financial Analysis Dashboard")
+        st.title("Financial Analysis Dashboard")
 
-    # File upload with delete functionality
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        uploaded_file = st.file_uploader("Upload your financial data CSV", type="csv")
-    
-    # Add a reset button next to the file uploader
-    with col2:
-        if st.session_state.uploaded_file is not None:
-            if st.button("Reset Data", help="Clear uploaded data and reset the dashboard"):
-                # Reset all session state variables including chat history
-                st.session_state.processed_data = None
-                st.session_state.uploaded_file = None
-                st.session_state.df = None
-                st.session_state.chat_history = []  # Clear the chat history when resetting data
-                st.session_state.show_chat = False  # Hide the chat interface after reset
-                st.rerun()  # Force page refresh
+        # File upload with delete functionality
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            uploaded_file = st.file_uploader("Upload your financial data CSV", type="csv")
+        
+        # Add a reset button next to the file uploader
+        with col2:
+            if st.session_state.uploaded_file is not None:
+                if st.button("Reset Data", help="Clear uploaded data and reset the dashboard"):
+                    # Reset all session state variables including chat history
+                    st.session_state.processed_data = None
+                    st.session_state.uploaded_file = None
+                    st.session_state.df = None
+                    st.session_state.chat_history = []  # Clear the chat history when resetting data
+                    st.session_state.show_chat = False  # Hide the chat interface after reset
+                    st.rerun()  # Force page refresh
 
-    if uploaded_file is not None or st.session_state.processed_data is not None:
-        try:
-            if uploaded_file is not None:
-                # New file uploaded, process it
-                df = pd.read_csv(uploaded_file)
-                processed_data = process_data(df)
-                st.session_state.processed_data = processed_data
-                st.session_state.uploaded_file = uploaded_file
-                st.session_state.df = df  # Store the dataframe in session state
-            else:
-                # Use existing processed data
-                processed_data = st.session_state.processed_data
-                # Ensure df is available (load it from session state)
-                if st.session_state.df is None and st.session_state.uploaded_file is not None:
-                    # Reload the data if necessary
-                    df = pd.read_csv(st.session_state.uploaded_file)
-                    st.session_state.df = df
-                df = st.session_state.df  # Use df from session state
+        if uploaded_file is not None or st.session_state.processed_data is not None:
+            try:
+                if uploaded_file is not None:
+                    # New file uploaded, process it
+                    df = pd.read_csv(uploaded_file)
+                    processed_data = process_data(df)
+                    st.session_state.processed_data = processed_data
+                    st.session_state.uploaded_file = uploaded_file
+                    st.session_state.df = df  # Store the dataframe in session state
+                else:
+                    # Use existing processed data
+                    processed_data = st.session_state.processed_data
+                    # Ensure df is available (load it from session state)
+                    if st.session_state.df is None and st.session_state.uploaded_file is not None:
+                        # Reload the data if necessary
+                        df = pd.read_csv(st.session_state.uploaded_file)
+                        st.session_state.df = df
+                    df = st.session_state.df  # Use df from session state
 
-            # Individual income summaries
-            st.header("Individual Financial Summary")
-            income_summary_table = create_income_summary_table(processed_data['income_summary'])
+                # Individual income summaries
+                st.header("Individual Financial Summary")
+                income_summary_table = create_income_summary_table(processed_data['income_summary'])
 
-            # Create table headers
-            col1, col2, col3, col4, col5 = st.columns([0.2, 0.3, 0.2, 0.2, 0.1])
-            with col1:
-                st.markdown("<b>Person</b>", unsafe_allow_html=True)
-            with col2:
-                st.markdown("<b>Gross Annual Income</b>", unsafe_allow_html=True)
-            with col3:
-                st.markdown("<b>Estimated Tax</b>", unsafe_allow_html=True)
-            with col4:
-                st.markdown("<b>Net Annual Income</b>", unsafe_allow_html=True)
-            with col5:
-                st.markdown("<b>Details</b>", unsafe_allow_html=True)
-
-            # Create table rows
-            for row in income_summary_table:
+                # Create table headers
                 col1, col2, col3, col4, col5 = st.columns([0.2, 0.3, 0.2, 0.2, 0.1])
                 with col1:
-                    st.markdown(f"<div class='income-table'>{row['Owner']}</div>", unsafe_allow_html=True)
+                    st.markdown("<b>Person</b>", unsafe_allow_html=True)
                 with col2:
-                    st.markdown(f"<div class='income-table'>{row['Gross Annual Income']}</div>", unsafe_allow_html=True)
+                    st.markdown("<b>Gross Annual Income</b>", unsafe_allow_html=True)
                 with col3:
-                    st.markdown(f"<div class='income-table'>{row['Estimated Tax']}</div>", unsafe_allow_html=True)
+                    st.markdown("<b>Estimated Tax</b>", unsafe_allow_html=True)
                 with col4:
-                    st.markdown(f"<div class='income-table'>{row['Net Annual Income']}</div>", unsafe_allow_html=True)
+                    st.markdown("<b>Net Annual Income</b>", unsafe_allow_html=True)
                 with col5:
-                    if st.button("ℹ️", key=f"info_{row['Owner']}", help=f"Show tax calculation details for {row['Owner']}"):
-                        st.session_state.page = 'tax_details'
-                        st.session_state.tax_details = row['tax_details']
-                        st.rerun()
+                    st.markdown("<b>Details</b>", unsafe_allow_html=True)
 
-            # Household totals
-            st.header("Household Summary")
-            col1, col2, col3 = st.columns(3)
-            cashflow_summary = create_cashflow_summary(
-                processed_data['total_net_income'],
-                processed_data['total_expenses']
-            )
+                # Create table rows
+                for row in income_summary_table:
+                    col1, col2, col3, col4, col5 = st.columns([0.2, 0.3, 0.2, 0.2, 0.1])
+                    with col1:
+                        st.markdown(f"<div class='income-table'>{row['Owner']}</div>", unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f"<div class='income-table'>{row['Gross Annual Income']}</div>", unsafe_allow_html=True)
+                    with col3:
+                        st.markdown(f"<div class='income-table'>{row['Estimated Tax']}</div>", unsafe_allow_html=True)
+                    with col4:
+                        st.markdown(f"<div class='income-table'>{row['Net Annual Income']}</div>", unsafe_allow_html=True)
+                    with col5:
+                        if st.button("ℹ️", key=f"info_{row['Owner']}", help=f"Show tax calculation details for {row['Owner']}"):
+                            st.session_state.page = 'tax_details'
+                            st.session_state.tax_details = row['tax_details']
+                            st.rerun()
 
-            # Calculate monthly surplus or deficit
-            monthly_surplus = cashflow_summary['Monthly Surplus']
-            
-            col1.metric("Annual Net Income", cashflow_summary['Total Net Income'])
-            col2.metric("Annual Expenses", cashflow_summary['Total Expenses'])
-            col3.metric("Annual Surplus/Deficit", cashflow_summary['Annual Surplus/Deficit'])
-            
-            # Add sustainability callout
-            st.markdown("---")
-            
-            # Calculate sustainability metrics
-            assets_df = processed_data['assets']
-            years_sustainable, sustainability_message, detailed_message = calculate_sustainability(assets_df, monthly_surplus)
-            
-            # Format the message in a callout box
-            message_color = "#1c7ed6" if years_sustainable > 10 else "#f59f00" if years_sustainable > 5 else "#fa5252"
-            
-            st.markdown(
-                f"""
-                <div style="
-                    background-color: {message_color}15; 
-                    border-left: 4px solid {message_color}; 
-                    padding: 15px; 
-                    border-radius: 5px; 
-                    margin: 10px 0;">
-                    <h3 style="margin-top:0; color: {message_color}">Financial Sustainability</h3>
-                    <p style="font-size: 1.1rem; margin-bottom: 10px;"><strong>{sustainability_message}</strong></p>
-                    <div style="font-size: 0.95rem; color: #333;">{detailed_message}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            
-            st.markdown("---")
+                # Household totals
+                st.header("Household Summary")
+                col1, col2, col3 = st.columns(3)
+                cashflow_summary = create_cashflow_summary(
+                    processed_data['total_net_income'],
+                    processed_data['total_expenses']
+                )
 
-            # Add Sankey diagram
-            st.subheader("Cash Flow Visualization")
-            
-            # Create a modified dataframe with adjusted net income values
-            if df is not None:  # Add check to ensure df is available
-                net_income_df = df.copy()
+                # Calculate monthly surplus or deficit
+                monthly_surplus = cashflow_summary['Monthly Surplus']
                 
-                # For each person, calculate their effective tax rate and apply it to income sources
-                for owner, summary in processed_data['income_summary'].items():
-                    if owner == 'Joint':
-                        continue
-                        
-                    # Calculate the effective tax rate for this owner
-                    gross_income = summary['gross_income']
-                    net_income = summary['net_income']
+                col1.metric("Annual Net Income", cashflow_summary['Total Net Income'])
+                col2.metric("Annual Expenses", cashflow_summary['Total Expenses'])
+                col3.metric("Annual Surplus/Deficit", cashflow_summary['Annual Surplus/Deficit'])
+                
+                # Add sustainability callout
+                st.markdown("---")
+                
+                # Calculate sustainability metrics
+                assets_df = processed_data['assets']
+                years_sustainable, sustainability_message, detailed_message = calculate_sustainability(assets_df, monthly_surplus)
+                
+                # Format the message in a callout box
+                message_color = "#1c7ed6" if years_sustainable > 10 else "#f59f00" if years_sustainable > 5 else "#fa5252"
+                
+                st.markdown(
+                    f"""
+                    <div style="
+                        background-color: {message_color}15; 
+                        border-left: 4px solid {message_color}; 
+                        padding: 15px; 
+                        border-radius: 5px; 
+                        margin: 10px 0;">
+                        <h3 style="margin-top:0; color: {message_color}">Financial Sustainability</h3>
+                        <p style="font-size: 1.1rem; margin-bottom: 10px;"><strong>{sustainability_message}</strong></p>
+                        <div style="font-size: 0.95rem; color: #333;">{detailed_message}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+                st.markdown("---")
+
+                # Add Sankey diagram
+                st.subheader("Cash Flow Visualization")
+                
+                # Create a modified dataframe with adjusted net income values
+                if df is not None:  # Add check to ensure df is available
+                    net_income_df = df.copy()
                     
-                    if gross_income > 0:
-                        effective_tax_rate = 1 - (net_income / gross_income)
+                    # For each person, calculate their effective tax rate and apply it to income sources
+                    for owner, summary in processed_data['income_summary'].items():
+                        if owner == 'Joint':
+                            continue
+                            
+                        # Calculate the effective tax rate for this owner
+                        gross_income = summary['gross_income']
+                        net_income = summary['net_income']
                         
-                        # Apply the tax rate to each income source for this owner
-                        income_mask = (net_income_df['Type'] == 'Income') & (net_income_df['Owner'] == owner)
-                        asset_income_mask = (net_income_df['Type'] == 'Asset') & (net_income_df['Owner'] == owner) & (net_income_df['Period_Value'] > 0)
-                        
-                        # Apply to regular income sources
-                        for idx in net_income_df.index[income_mask]:
-                            gross_monthly = net_income_df.at[idx, 'Monthly_Value']
-                            net_income_df.at[idx, 'Monthly_Value'] = gross_monthly * (1 - effective_tax_rate)
-                        
-                        # Apply to asset income sources
-                        for idx in net_income_df.index[asset_income_mask]:
-                            gross_monthly = net_income_df.at[idx, 'Monthly_Value']
-                            net_income_df.at[idx, 'Monthly_Value'] = gross_monthly * (1 - effective_tax_rate)
+                        if gross_income > 0:
+                            effective_tax_rate = 1 - (net_income / gross_income)
+                            
+                            # Apply the tax rate to each income source for this owner
+                            income_mask = (net_income_df['Type'] == 'Income') & (net_income_df['Owner'] == owner)
+                            asset_income_mask = (net_income_df['Type'] == 'Asset') & (net_income_df['Owner'] == owner) & (net_income_df['Period_Value'] > 0)
+                            
+                            # Apply to regular income sources
+                            for idx in net_income_df.index[income_mask]:
+                                gross_monthly = net_income_df.at[idx, 'Monthly_Value']
+                                net_income_df.at[idx, 'Monthly_Value'] = gross_monthly * (1 - effective_tax_rate)
+                            
+                            # Apply to asset income sources
+                            for idx in net_income_df.index[asset_income_mask]:
+                                gross_monthly = net_income_df.at[idx, 'Monthly_Value']
+                                net_income_df.at[idx, 'Monthly_Value'] = gross_monthly * (1 - effective_tax_rate)
 
-                # Pass the modified dataframe with net income values and the total net income
+                    # Pass the modified dataframe with net income values and the total net income
+                    st.plotly_chart(
+                        create_cashflow_sankey(net_income_df, processed_data['total_net_income']),
+                        use_container_width=True
+                    )
+                else:
+                    # Fallback for when df is not available
+                    st.plotly_chart(
+                        create_cashflow_sankey(processed_data['df'], processed_data['total_net_income']),
+                        use_container_width=True
+                    )
+
+                # Asset projections section
+                st.header("Asset Projections")
+                years = st.slider("Chart Projection Period (Years)", min_value=1, max_value=30, value=20)
+
+                # Calculate projections based on selected years
+                projections = calculate_projections(processed_data['df'], years)
+                
+                # Show the total assets (net worth) chart with the same time scale
                 st.plotly_chart(
-                    create_cashflow_sankey(net_income_df, processed_data['total_net_income']),
+                    create_total_assets_chart(projections),
                     use_container_width=True
                 )
-            else:
-                # Fallback for when df is not available
-                st.plotly_chart(
-                    create_cashflow_sankey(processed_data['df'], processed_data['total_net_income']),
-                    use_container_width=True
-                )
-
-            # Asset projections section
-            st.header("Asset Projections")
-            years = st.slider("Chart Projection Period (Years)", min_value=1, max_value=30, value=20)
-
-            # Calculate projections based on selected years
-            projections = calculate_projections(processed_data['df'], years)
-            
-            # Show the total assets (net worth) chart with the same time scale
-            st.plotly_chart(
-                create_total_assets_chart(projections),
-                use_container_width=True
-            )
-            
-            # Then add the asset selector and individual asset chart
-            st.subheader("Individual Asset Projections")
-            
-            # Get all available asset names (excluding 'months' and 'Total Assets')
-            all_assets = [key for key in projections.keys() if key != 'months' and key != 'Total Assets']
-            
-            # Create asset selection interface
-            st.write("Select assets to display:")
-            
-            # Use columns for a more compact layout suitable for tablets
-            asset_columns = st.columns(3)  # 3 columns for tablets, can adjust for mobile later
-            
-            # If there's no selection in session_state, initialize with all assets selected
-            if 'selected_assets' not in st.session_state:
-                st.session_state.selected_assets = all_assets.copy()
-            
-            # Add select all / none buttons
-            select_col1, select_col2, _ = st.columns([1, 1, 4])
-            with select_col1:
-                if st.button("Select All"):
+                
+                # Then add the asset selector and individual asset chart
+                st.subheader("Individual Asset Projections")
+                
+                # Get all available asset names (excluding 'months' and 'Total Assets')
+                all_assets = [key for key in projections.keys() if key != 'months' and key != 'Total Assets']
+                
+                # Create asset selection interface
+                st.write("Select assets to display:")
+                
+                # Use columns for a more compact layout suitable for tablets
+                asset_columns = st.columns(3)  # 3 columns for tablets, can adjust for mobile later
+                
+                # If there's no selection in session_state, initialize with all assets selected
+                if 'selected_assets' not in st.session_state:
                     st.session_state.selected_assets = all_assets.copy()
-                    st.rerun()
-            with select_col2:
-                if st.button("Select None"):
-                    st.session_state.selected_assets = []
-                    st.rerun()
-            
-            # Create checkboxes for each asset
-            selected_assets = []
-            for i, asset in enumerate(all_assets):
-                col_idx = i % 3  # Distribute across 3 columns
-                with asset_columns[col_idx]:
-                    # Use the current selection state from session_state
-                    is_selected = st.checkbox(asset, value=asset in st.session_state.selected_assets, key=f"asset_{i}")
-                    if is_selected:
-                        selected_assets.append(asset)
-            
-            # Update session state with current selection
-            st.session_state.selected_assets = selected_assets
-            
-            # Show the chart with only selected assets - using the same time scale as defined by the slider
-            st.plotly_chart(
-                create_projection_chart(projections, selected_assets),
-                use_container_width=True
-            )
-            
-            # Add the new asset projection table
-            st.subheader("Asset Value Forecast Table")
-            
-            # Create the projection table if available
-            if 'asset_projections' in processed_data:
-                # Get the asset projections
-                asset_projections = processed_data['asset_projections']
                 
-                # Store original assets for reference in the table creation
-                asset_projections['original_assets'] = processed_data['assets']
+                # Add select all / none buttons
+                select_col1, select_col2, _ = st.columns([1, 1, 4])
+                with select_col1:
+                    if st.button("Select All"):
+                        st.session_state.selected_assets = all_assets.copy()
+                        st.rerun()
+                with select_col2:
+                    if st.button("Select None"):
+                        st.session_state.selected_assets = []
+                        st.rerun()
                 
-                # Create the table with intervals at 5, 10, 15, and 20 years
-                projection_table = create_asset_projection_table(asset_projections)
+                # Create checkboxes for each asset
+                selected_assets = []
+                for i, asset in enumerate(all_assets):
+                    col_idx = i % 3  # Distribute across 3 columns
+                    with asset_columns[col_idx]:
+                        # Use the current selection state from session_state
+                        is_selected = st.checkbox(asset, value=asset in st.session_state.selected_assets, key=f"asset_{i}")
+                        if is_selected:
+                            selected_assets.append(asset)
                 
-                # Format the currency columns
-                for col in projection_table.columns:
-                    if col not in ['Asset', 'Growth Rate', 'Withdrawal Rate']:
-                        projection_table[col] = projection_table[col].apply(lambda x: f"£{x:,.0f}")
+                # Update session state with current selection
+                st.session_state.selected_assets = selected_assets
                 
-                # Display the table
+                # Show the chart with only selected assets - using the same time scale as defined by the slider
+                st.plotly_chart(
+                    create_projection_chart(projections, selected_assets),
+                    use_container_width=True
+                )
+                
+                # Add the new asset projection table
+                st.subheader("Asset Value Forecast Table")
+                
+                # Create the projection table if available
+                if 'asset_projections' in processed_data:
+                    # Get the asset projections
+                    asset_projections = processed_data['asset_projections']
+                    
+                    # Store original assets for reference in the table creation
+                    asset_projections['original_assets'] = processed_data['assets']
+                    
+                    # Create the table with intervals at 5, 10, 15, and 20 years
+                    projection_table = create_asset_projection_table(asset_projections)
+                    
+                    # Format the currency columns
+                    for col in projection_table.columns:
+                        if col not in ['Asset', 'Growth Rate', 'Withdrawal Rate']:
+                            projection_table[col] = projection_table[col].apply(lambda x: f"£{x:,.0f}")
+                    
+                    # Display the table
+                    st.dataframe(
+                        projection_table,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    
+                    # Add a note about the projections
+                    st.caption("""
+                    This table shows projected asset values at 5-year intervals based on current growth rates and withdrawal levels.
+                    The 'Withdrawal Rate' is calculated as annual withdrawals divided by current value.
+                    """)
+                else:
+                    st.info("Detailed asset projections not available.")
+
+                # Asset depletion analysis
+                st.subheader("Asset Depletion Analysis")
+                assets = processed_data['assets']
+
+                # Create and display the asset depletion table
+                depletion_data = []
+                for _, asset in assets.iterrows():
+                    monthly_value = asset['Monthly_Value']
+                    depletion_data.append({
+                        'Asset': f"{asset['Description']} ({asset['Owner']})",
+                        'Starting Value': format_currency(asset['Capital_Value']),
+                        'Monthly Withdrawal': format_currency(monthly_value),
+                        'Annual Withdrawal': format_currency(monthly_value * 12),
+                        'Years until Depletion': f"{asset['Depletion_Years']:.2f}" if asset['Depletion_Years'] < 100 else "Never"
+                    })
+
                 st.dataframe(
-                    projection_table,
+                    pd.DataFrame(depletion_data),
                     use_container_width=True,
                     hide_index=True
                 )
+
+                # Data tables
+                st.header("Detailed Data")
+                tabs = st.tabs(["Income", "Expenses", "Assets"])
+
+                with tabs[0]:
+                    # Create a copy of the dataframe with rounded Monthly_Value
+                    income_df = processed_data['df'][processed_data['df']['Type'] == 'Income'].copy()
+                    income_df['Monthly_Value'] = income_df['Monthly_Value'].round(0)
+                    st.dataframe(income_df)
+
+                with tabs[1]:
+                    # Create a copy of the dataframe with rounded Monthly_Value
+                    expense_df = processed_data['df'][processed_data['df']['Type'] == 'Expense'].copy()
+                    expense_df['Monthly_Value'] = expense_df['Monthly_Value'].round(0)
+                    st.dataframe(expense_df)
+
+                with tabs[2]:
+                    # Create a copy of the dataframe with rounded Monthly_Value
+                    asset_df = processed_data['df'][processed_data['df']['Type'] == 'Asset'].copy()
+                    asset_df['Monthly_Value'] = asset_df['Monthly_Value'].round(0)
+                    st.dataframe(asset_df)
+
+                # Add AI Chat Interface with collapsible section
+                st.markdown("---")
                 
-                # Add a note about the projections
-                st.caption("""
-                This table shows projected asset values at 5-year intervals based on current growth rates and withdrawal levels.
-                The 'Withdrawal Rate' is calculated as annual withdrawals divided by current value.
-                """)
-            else:
-                st.info("Detailed asset projections not available.")
+                # Initialize the chat display state if it doesn't exist
+                if 'show_chat' not in st.session_state:
+                    st.session_state.show_chat = False
+                
+                # Create a button to reveal the chat interface
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.subheader("AI Financial Assistant")
+                with col2:
+                    if not st.session_state.show_chat:
+                        st.button("Ask Questions About Your Data", 
+                                  on_click=lambda: setattr(st.session_state, 'show_chat', True),
+                                  use_container_width=True)
+                    else:
+                        st.button("Hide Assistant", 
+                                  on_click=lambda: setattr(st.session_state, 'show_chat', False),
+                                  use_container_width=True)
+                
+                # Only show the chat interface if the user has clicked to reveal it
+                if st.session_state.show_chat:
+                    render_chat_interface(processed_data)
 
-            # Asset depletion analysis
-            st.subheader("Asset Depletion Analysis")
-            assets = processed_data['assets']
+            except Exception as e:
+                logger.error(f"Error in main application: {str(e)}")
+                logger.error(traceback.format_exc())
+                st.error(f"An error occurred in the application: {str(e)}")
+                st.error(traceback.format_exc())
+        else:
+            st.info("Please upload a CSV file to begin the analysis.")
 
-            # Create and display the asset depletion table
-            depletion_data = []
-            for _, asset in assets.iterrows():
-                monthly_value = asset['Monthly_Value']
-                depletion_data.append({
-                    'Asset': f"{asset['Description']} ({asset['Owner']})",
-                    'Starting Value': format_currency(asset['Capital_Value']),
-                    'Monthly Withdrawal': format_currency(monthly_value),
-                    'Annual Withdrawal': format_currency(monthly_value * 12),
-                    'Years until Depletion': f"{asset['Depletion_Years']:.2f}" if asset['Depletion_Years'] < 100 else "Never"
-                })
-
-            st.dataframe(
-                pd.DataFrame(depletion_data),
-                use_container_width=True,
-                hide_index=True
-            )
-
-            # Data tables
-            st.header("Detailed Data")
-            tabs = st.tabs(["Income", "Expenses", "Assets"])
-
-            with tabs[0]:
-                # Create a copy of the dataframe with rounded Monthly_Value
-                income_df = processed_data['df'][processed_data['df']['Type'] == 'Income'].copy()
-                income_df['Monthly_Value'] = income_df['Monthly_Value'].round(0)
-                st.dataframe(income_df)
-
-            with tabs[1]:
-                # Create a copy of the dataframe with rounded Monthly_Value
-                expense_df = processed_data['df'][processed_data['df']['Type'] == 'Expense'].copy()
-                expense_df['Monthly_Value'] = expense_df['Monthly_Value'].round(0)
-                st.dataframe(expense_df)
-
-            with tabs[2]:
-                # Create a copy of the dataframe with rounded Monthly_Value
-                asset_df = processed_data['df'][processed_data['df']['Type'] == 'Asset'].copy()
-                asset_df['Monthly_Value'] = asset_df['Monthly_Value'].round(0)
-                st.dataframe(asset_df)
-
-            # Add AI Chat Interface with collapsible section
-            st.markdown("---")
-            
-            # Initialize the chat display state if it doesn't exist
-            if 'show_chat' not in st.session_state:
-                st.session_state.show_chat = False
-            
-            # Create a button to reveal the chat interface
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.subheader("AI Financial Assistant")
-            with col2:
-                if not st.session_state.show_chat:
-                    st.button("Ask Questions About Your Data", 
-                              on_click=lambda: setattr(st.session_state, 'show_chat', True),
-                              use_container_width=True)
-                else:
-                    st.button("Hide Assistant", 
-                              on_click=lambda: setattr(st.session_state, 'show_chat', False),
-                              use_container_width=True)
-            
-            # Only show the chat interface if the user has clicked to reveal it
-            if st.session_state.show_chat:
-                render_chat_interface(processed_data)
-
-        except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
-            # Add more detailed error information in development
-            import traceback
-            st.error(traceback.format_exc())
-    else:
-        st.info("Please upload a CSV file to begin the analysis.")
+    except Exception as e:
+        logger.error(f"Error in main application: {str(e)}")
+        logger.error(traceback.format_exc())
+        st.error(f"An error occurred in the application: {str(e)}")
+        st.error(traceback.format_exc())
 
 if __name__ == "__main__":
-    main()
-
-if __name__ == '__main__':
-    import os
-    
-    # This configuration works with Render and other cloud platforms
-    # It uses environment variables with sensible defaults
-    port = int(os.environ.get('PORT', 8080))
-    debug = os.environ.get('DEBUG', 'False').lower() == 'true'
-    
-    app.run_server(
-        host='0.0.0.0',  # Required to allow external connections
-        port=port,       # Use PORT environment variable or default to 8080
-        debug=debug      # Control debug mode with environment variable
-    )
+    try:
+        logger.info("Application entry point reached")
+        main()
+    except Exception as e:
+        logger.error(f"Critical application error: {str(e)}")
+        logger.error(traceback.format_exc())
+        st.error(f"A critical error occurred: {str(e)}")
+        st.error(traceback.format_exc())
