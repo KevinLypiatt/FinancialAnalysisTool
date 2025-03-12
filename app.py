@@ -38,7 +38,7 @@ try:
             # Add other secrets as needed
             # For example, OpenAI API key if used
             openai_key = os.environ.get('OPENAI_API_KEY') 
-            if openai_key:
+            if (openai_key):
                 logger.info("Found OPENAI_API_KEY in environment variables")
                 f.write(f'[openai]\napi_key = "{openai_key}"\n\n')
         
@@ -576,23 +576,27 @@ def main():
                         st.markdown("""
                         <style>
                         .asset-card-title {
-                            font-size: 1.3rem;
+                            font-size: 1.5rem;
                             font-weight: bold;
-                            padding-bottom: 10px;
+                            padding-bottom: 12px;
+                            margin-top: 0;
                         }
-                        .card-table {
-                            width: 100%;
+                        .card-column-header {
+                            font-size: 0.9rem;
+                            font-weight: 600;
+                            color: #555;
+                            margin-bottom: 8px;
+                        }
+                        /* Hide index column and remove borders */
+                        .stTable div[data-testid="stTable"] table {
                             border-collapse: collapse;
                         }
-                        .card-table th {
-                            text-align: left;
-                            font-weight: bold;
-                            padding: 5px;
-                            border-bottom: 1px solid #ddd;
+                        .stTable div[data-testid="stTable"] table thead tr:first-child {
+                            display: none;
                         }
-                        .card-table td {
-                            padding: 5px;
-                            border-bottom: 1px solid #eee;
+                        .stTable div[data-testid="stTable"] table tbody tr td {
+                            border: none;
+                            padding: 4px 8px 4px 0;
                         }
                         </style>
                         """, unsafe_allow_html=True)
@@ -600,24 +604,27 @@ def main():
                         # Display cards in a 1-column layout
                         for card in asset_cards:
                             with st.expander(card['name'], expanded=True):
-                                # Display asset name in large bold font
+                                # Display only the asset name in large bold font (no expander title)
                                 st.markdown(f"<div class='asset-card-title'>{card['name']}</div>", unsafe_allow_html=True)
                                 
                                 # Create two columns for the card content
                                 col1, col2 = st.columns(2)
                                 
-                                # Left column - metrics
+                                # Left column - metrics with smaller header
                                 with col1:
-                                    st.markdown("### Key Metrics")
-                                    metrics_data = [[k, v] for k, v in card['metrics'].items()]
-                                    st.table(pd.DataFrame(metrics_data, columns=["Metric", "Value"]))
+                                    st.markdown("<div class='card-column-header'>Key Metrics</div>", unsafe_allow_html=True)
+                                    # Apply the stTable class to enable CSS targeting
+                                    st.markdown("<div class='stTable'>", unsafe_allow_html=True)
+                                    st.table(card['metrics'])
+                                    st.markdown("</div>", unsafe_allow_html=True)
                                 
-                                # Right column - projections
+                                # Right column - projections with smaller header
                                 with col2:
-                                    st.markdown("### Projections")
-                                    projections_data = [[k, v] for k, v in card['projections'].items()]
-                                    st.table(pd.DataFrame(projections_data, columns=["Year", "Value"]))
-                                
+                                    st.markdown("<div class='card-column-header'>Projections</div>", unsafe_allow_html=True)
+                                    # Apply the stTable class to enable CSS targeting
+                                    st.markdown("<div class='stTable'>", unsafe_allow_html=True)
+                                    st.table(card['projections'])
+                                    st.markdown("</div>", unsafe_allow_html=True)
                     else:
                         # Use the standard table for desktop
                         # Create the table with intervals at 5, 10, 15, and 20 years
@@ -640,30 +647,29 @@ def main():
                         This table shows projected asset values at 5-year intervals based on current growth rates and withdrawal levels.
                         The 'Withdrawal Rate' is calculated as annual withdrawals divided by current value.
                         """)
-                else:
-                    st.info("Detailed asset projections not available.")
 
-                # Asset depletion analysis
-                st.subheader("Asset Depletion Analysis")
-                assets = processed_data['assets']
+                # Asset depletion analysis - only show in regular view
+                if not is_mobile:
+                    st.subheader("Asset Depletion Analysis")
+                    assets = processed_data['assets']
 
-                # Create and display the asset depletion table
-                depletion_data = []
-                for _, asset in assets.iterrows():
-                    monthly_value = asset['Monthly_Value']
-                    depletion_data.append({
-                        'Asset': f"{asset['Description']} ({asset['Owner']})",
-                        'Starting Value': format_currency(asset['Capital_Value']),
-                        'Monthly Withdrawal': format_currency(monthly_value),
-                        'Annual Withdrawal': format_currency(monthly_value * 12),
-                        'Years until Depletion': f"{asset['Depletion_Years']:.2f}" if asset['Depletion_Years'] < 100 else "Never"
-                    })
+                    # Create and display the asset depletion table
+                    depletion_data = []
+                    for _, asset in assets.iterrows():
+                        monthly_value = asset['Monthly_Value']
+                        depletion_data.append({
+                            'Asset': f"{asset['Description']} ({asset['Owner']})",
+                            'Starting Value': format_currency(asset['Capital_Value']),
+                            'Monthly Withdrawal': format_currency(monthly_value),
+                            'Annual Withdrawal': format_currency(monthly_value * 12),
+                            'Years until Depletion': f"{asset['Depletion_Years']:.2f}" if asset['Depletion_Years'] < 100 else "Never"
+                        })
 
-                st.dataframe(
-                    pd.DataFrame(depletion_data),
-                    use_container_width=True,
-                    hide_index=True
-                )
+                    st.dataframe(
+                        pd.DataFrame(depletion_data),
+                        use_container_width=True,
+                        hide_index=True
+                    )
 
                 # Data tables
                 st.header("Detailed Data")

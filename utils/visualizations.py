@@ -619,7 +619,7 @@ def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
     Args:
         projections: Dictionary containing asset projections
         assets_df: DataFrame with asset information
-        intervals: Year intervals to display (default: [5, 10, 15, 20])
+        intervals: List of year intervals to display (default: [5, 10, 15, 20])
     
     Returns:
         List of card data dictionaries
@@ -629,14 +629,6 @@ def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
     # Process each asset
     for asset_key in projections.keys():
         if asset_key != 'months' and asset_key != 'Total Assets' and asset_key != 'original_assets':
-            # Get values at specific years
-            current_value = projections[asset_key][0]
-            interval_values = []
-            
-            for year in intervals:
-                year_index = min(year, len(projections[asset_key]) - 1)
-                interval_values.append(projections[asset_key][year_index])
-            
             # Extract asset name and owner from the key
             parts = asset_key.split(' (')
             asset_name = parts[0]
@@ -645,10 +637,13 @@ def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
             # Find this asset in the original data
             monthly_withdrawal = 0
             depletion_years = "Never"
+            starting_value = 0
             
+            # Find the matching asset in the DataFrame
             for _, asset in assets_df.iterrows():
                 if asset['Description'] == asset_name and asset['Owner'] == owner:
                     monthly_withdrawal = asset['Monthly_Value']
+                    starting_value = asset['Capital_Value']  # Get the starting value from assets_df
                     
                     if 'Depletion_Years' in asset:
                         if asset['Depletion_Years'] < 100:
@@ -659,20 +654,28 @@ def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
                             depletion_years = "Never"
                     break
             
+            # Get current value (year 0) 
+            current_value = projections[asset_key][0]
+            
+            # Get values at specific years from the projections
+            projection_values = {}
+            for year in intervals:
+                # Ensure we don't go beyond the projection limit
+                year_idx = min(year * 12, len(projections[asset_key])-1)
+                # Format the value as currency
+                projection_values[f'{year} Years'] = format_currency(projections[asset_key][year_idx])
+            
             # Create card data with both left and right columns of data
+            metrics = {
+                'Starting Value': format_currency(starting_value),
+                'Monthly Withdrawal': format_currency(monthly_withdrawal),
+                'Depleted By': depletion_years
+            }
+            
             card_data = {
                 'name': asset_key,
-                'metrics': {
-                    'Starting Value': format_currency(current_value),
-                    'Monthly Withdrawal': format_currency(monthly_withdrawal),
-                    'Depleted By': depletion_years
-                },
-                'projections': {
-                    f'{intervals[0]} Years': format_currency(interval_values[0]),
-                    f'{intervals[1]} Years': format_currency(interval_values[1]),
-                    f'{intervals[2]} Years': format_currency(interval_values[2]),
-                    f'{intervals[3]} Years': format_currency(interval_values[3])
-                }
+                'metrics': metrics,  # Pass dictionary directly to avoid index
+                'projections': projection_values  # Pass dictionary directly to avoid index
             }
             
             cards.append(card_data)
