@@ -291,9 +291,9 @@ def calculate_sustainability(assets_df, monthly_surplus):
             remaining_assets_text = f"At the point you no longer generate a surplus of income over expenses you will need to either reduce expenses or take additional income from remaining assets. Your remaining assets at that point will total {format_currency(remaining_assets_value)}."
             
             if zero_surplus_asset != earliest_depleting_asset:
-                zero_surplus_note = f"\n\n**Surplus Impact:** Your annual surplus will drop to zero in approximately **{zero_years} years and {zero_months} months** when '{zero_surplus_asset}' depletes.\n\n{remaining_assets_text}"
+                zero_surplus_note = f"\n\n**Surplus Impact:** Your annual surplus of income over expenses will drop to zero in approximately **{zero_years} years and {zero_months} months** when '{zero_surplus_asset}' runs out.\n\n{remaining_assets_text}"
             else:
-                zero_surplus_note = f"\n\n**Surplus Impact:** Your annual surplus will drop to zero when '{zero_surplus_asset}' depletes in approximately **{zero_years} years and {zero_months} months**.\n\n{remaining_assets_text}"
+                zero_surplus_note = f"\n\n**Surplus Impact:** Your annual surplus of income over expenses will drop to zero when '{zero_surplus_asset}' runs out in approximately **{zero_years} years and {zero_months} months**.\n\n{remaining_assets_text}"
         
         if min_depletion_years == float('inf'):
             return float('inf'), "Your income covers all expenses! 🎉", f"With your current surplus and asset growth, your finances appear sustainable for the long term.{zero_surplus_note}"
@@ -301,7 +301,7 @@ def calculate_sustainability(assets_df, monthly_surplus):
             years = int(min_depletion_years)
             months = int((min_depletion_years - years) * 12)
             
-            detailed = f"While you're currently running a surplus, the earliest asset to deplete will be '{earliest_depleting_asset}' in approximately {years} years and {months} months based on scheduled withdrawals.{zero_surplus_note}"
+            detailed = f"You're currently running a monthly surplus. The first asset to run out will be '{earliest_depleting_asset}' in approximately {years} years and {months} months (based on current withdrawals).{zero_surplus_note}"
             
             return min_depletion_years, "Your income covers all expenses! 🎉", detailed
     
