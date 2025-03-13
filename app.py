@@ -352,7 +352,22 @@ def main():
         # File upload with delete functionality
         col1, col2 = st.columns([3, 1])
         with col1:
-            uploaded_file = st.file_uploader("Upload your financial data CSV", type="csv")
+            try:
+                # Add more robust error handling for file uploads
+                uploaded_file = st.file_uploader("Upload your financial data CSV", type="csv", 
+                                               accept_multiple_files=False, 
+                                               key="csv_uploader")
+                
+                # Log information about the uploaded file
+                if uploaded_file is not None:
+                    logger.info(f"File uploaded: {uploaded_file.name}, size: {uploaded_file.size} bytes")
+                    # Force buffer position to start to ensure proper reading
+                    uploaded_file.seek(0)
+            except Exception as e:
+                logger.error(f"Error during file upload: {str(e)}")
+                logger.error(traceback.format_exc())
+                st.error(f"Error processing uploaded file: {str(e)}")
+                uploaded_file = None
         
         # Add a reset button next to the file uploader
         with col2:
@@ -370,11 +385,29 @@ def main():
             try:
                 if uploaded_file is not None:
                     # New file uploaded, process it
-                    df = pd.read_csv(uploaded_file)
-                    processed_data = process_data(df)
-                    st.session_state.processed_data = processed_data
-                    st.session_state.uploaded_file = uploaded_file
-                    st.session_state.df = df  # Store the dataframe in session state
+                    logger.info("Processing newly uploaded file")
+                    try:
+                        # Reset position to start of file and try reading with explicit parameters
+                        uploaded_file.seek(0)
+                        # Try different encoding and error handling options if standard approach fails
+                        try:
+                            df = pd.read_csv(uploaded_file)
+                        except Exception as e:
+                            logger.warning(f"Standard csv parsing failed: {str(e)}, trying with utf-8 encoding")
+                            uploaded_file.seek(0)
+                            df = pd.read_csv(uploaded_file, encoding='utf-8', engine='python')
+                        
+                        logger.info(f"Successfully read CSV with shape: {df.shape}")
+                        processed_data = process_data(df)
+                        st.session_state.processed_data = processed_data
+                        st.session_state.uploaded_file = uploaded_file
+                        st.session_state.df = df  # Store the dataframe in session state
+                    except Exception as e:
+                        logger.error(f"Error processing CSV file: {str(e)}")
+                        logger.error(traceback.format_exc())
+                        st.error(f"Unable to process the uploaded CSV file: {str(e)}")
+                        st.error("Please check that the file is a properly formatted CSV with the expected columns.")
+                        return
                 else:
                     # Use existing processed data
                     processed_data = st.session_state.processed_data
