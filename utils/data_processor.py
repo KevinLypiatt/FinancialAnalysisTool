@@ -9,15 +9,31 @@ def convert_currency_to_float(value):
 
 def calculate_monthly_value(row):
     """Calculate monthly value based on frequency."""
-    period_value = convert_currency_to_float(row['Period_Value'])
-
-    if row['Frequency'] == 'Weekly':
+    period_value = row['Period_Value'] if 'Period_Value' in row else 0
+    # Ensure period_value is a float before mathematical operations
+    if isinstance(period_value, str):
+        period_value = convert_currency_to_float(period_value)
+    else:
+        period_value = float(period_value)
+        
+    frequency = row.get('Frequency', 'Monthly')
+    
+    # Convert frequency to string if it's not already
+    if not isinstance(frequency, str):
+        frequency = str(frequency)
+    
+    # Normalize frequency to lowercase for case-insensitive comparison
+    freq_lower = frequency.lower()
+    
+    if 'week' in freq_lower:
         return period_value * 52 / 12
-    elif row['Frequency'] == 'Monthly':
+    elif 'month' in freq_lower:
         return period_value
-    elif row['Frequency'] == 'Investment':
+    elif 'year' in freq_lower or 'annual' in freq_lower:
+        return period_value / 12
+    elif 'invest' in freq_lower:
         return 0
-    return 0
+    return period_value  # Default to the original value if frequency not recognized
 
 def calculate_depletion_years(capital, monthly_withdrawal, growth_rate=0):
     """
@@ -132,14 +148,76 @@ def calculate_detailed_asset_projections(assets_df, years=25):
     return projections
 
 def process_data(df):
-    """Process the financial data and return summary statistics."""
+    """
+    Process financial data and calculate key metrics.
+    
+    Args:
+        df: pandas DataFrame with expected columns like Description, Type, Owner, etc.
+    
+    Returns:
+        Dictionary with processed results
+    """
+    # Make a copy of the original dataframe to avoid modifying the input
+    df = df.copy()
+    
+    # Normalize column names for case-insensitive matching
+    column_map = {col.lower(): col for col in df.columns}
+    
+    # Check for required columns (case-insensitive)
+    required_columns = ['description', 'type', 'owner', 'period_value']
+    missing_columns = [col for col in required_columns if col not in column_map]
+    
+    if missing_columns:
+        raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+    
+    # Add taxable column if missing with default values
+    if 'taxable' not in column_map:
+        df['Taxable'] = 'no'
+        # Set default to 'yes' for Income items
+        df.loc[df[column_map.get('type')].str.lower() == 'income', 'Taxable'] = 'yes'
+    else:
+        # Ensure Taxable column exists with proper name
+        taxable_col = column_map['taxable']
+        df['Taxable'] = df[taxable_col]
+    
     # Clean currency values
-    df['Capital_Value'] = df['Capital_Value'].apply(convert_currency_to_float)
-    df['Period_Value'] = df['Period_Value'].apply(convert_currency_to_float)
+    if 'capital_value' in column_map:
+        capital_value_col = column_map['capital_value']
+        df['Capital_Value'] = df[capital_value_col].apply(convert_currency_to_float)
+    else:
+        df['Capital_Value'] = 0.0
+        
+    if 'period_value' in column_map:
+        period_value_col = column_map['period_value']
+        df['Period_Value'] = df[period_value_col].apply(convert_currency_to_float)
+    else:
+        df['Period_Value'] = 0.0
+    
+    # Ensure standard column names exist for processing
+    df['Description'] = df[column_map['description']]
+    df['Type'] = df[column_map['type']]
+    df['Owner'] = df[column_map['owner']]
+    
+    # Handle Growth_Rate column
+    if 'growth_rate' in column_map:
+        df['Growth_Rate'] = df[column_map['growth_rate']]
+    else:
+        df['Growth_Rate'] = 0
+    
+    # Handle Frequency column (used in calculate_monthly_value)
+    if 'frequency' in column_map:
+        df['Frequency'] = df[column_map['frequency']]
+    else:
+        df['Frequency'] = 'Monthly'  # Default to monthly if missing
+    
+    # Normalize taxable field to lowercase for comparison
+    df['Taxable'] = df['Taxable'].astype(str).str.lower()
+    
+    # Calculate monthly values
     df['Monthly_Value'] = df.apply(calculate_monthly_value, axis=1)
 
     # Add an explicit column to indicate if an asset generates income
-    assets = df[df['Type'] == 'Asset'].copy()
+    assets = df[df['Type'].str.lower() == 'asset'].copy()
     assets['Generates_Income'] = assets['Period_Value'] > 0
     assets['Income_Description'] = assets.apply(
         lambda x: f"Income from {x['Description']}" if x['Period_Value'] > 0 else "N/A", 
@@ -150,43 +228,17 @@ def process_data(df):
     assets['Depletion_Years'] = assets.apply(
         lambda x: calculate_depletion_years(
             x['Capital_Value'],
-            calculate_monthly_value(x),
+            x['Monthly_Value'],  # Use the already calculated monthly value
             float(str(x['Growth_Rate']).strip('%').replace(',', '')) / 100 if isinstance(x['Growth_Rate'], str) else x['Growth_Rate']
         ),
         axis=1
     )
 
-    # Process income per person with clearer distinction between asset income and other income
-    income_summary = {}
-    for owner in df['Owner'].unique():
-        if owner != 'Joint':
-            # Regular non-asset income
-            regular_income = df[(df['Type'] == 'Income') & (df['Owner'] == owner)]['Monthly_Value'].sum() * 12
-            
-            # Income from assets (explicitly labeled)
-            asset_income = df[(df['Type'] == 'Asset') & (df['Owner'] == owner) & (df['Period_Value'] > 0)]['Monthly_Value'].sum() * 12
-            
-            # Add a detailed breakdown of income sources
-            income_sources = {
-                'regular_income': regular_income,
-                'asset_income': asset_income,
-            }
-
-            total_income = regular_income + asset_income
-            tax_details = calculate_uk_tax(total_income)
-            tax = tax_details['total_tax']
-            net_income = total_income - tax
-
-            income_summary[owner] = {
-                'gross_income': total_income,
-                'tax': tax,
-                'net_income': net_income,
-                'income_sources': income_sources,  # Add detailed breakdown
-                'tax_details': tax_details
-            }
+    # Process income per person
+    income_summary = calculate_income_by_owner(df)
 
     total_net_income = sum(summary['net_income'] for summary in income_summary.values())
-    total_expenses = df[df['Type'] == 'Expense']['Monthly_Value'].sum() * 12
+    total_expenses = df[df['Type'].str.lower() == 'expense']['Monthly_Value'].sum() * 12
 
     # Calculate detailed asset projections for 25 years
     asset_projections = calculate_detailed_asset_projections(assets, 25)
@@ -198,8 +250,126 @@ def process_data(df):
         'total_expenses': total_expenses,
         'df': df,
         'assets': assets,
-        'asset_projections': asset_projections  # Add the detailed projections
+        'asset_projections': asset_projections
     }
+
+def calculate_income_by_owner(df):
+    """
+    Calculate income, taxes, and net income for each person with clearer separation
+    between taxable and untaxed income.
+    """
+    result = {}
+    
+    # Get all unique owners from income sources
+    owners = df[df['Type'].str.lower() == 'income']['Owner'].unique()
+    
+    for owner in owners:
+        # 1. Annual Taxable Income - from both regular income and asset withdrawals
+        taxable_income = df[(df['Type'].str.lower() == 'income') & 
+                          (df['Owner'] == owner) & 
+                          (df['Taxable'] == 'yes')]['Monthly_Value'].sum() * 12
+        
+        taxable_asset_income = df[(df['Type'].str.lower() == 'asset') & 
+                               (df['Owner'] == owner) & 
+                               (df['Monthly_Value'] > 0) & 
+                               (df['Taxable'] == 'yes')]['Monthly_Value'].sum() * 12
+        
+        # Total taxable income from all sources
+        total_taxable_income = taxable_income + taxable_asset_income
+        
+        # 2. Estimated Tax - calculated based on UK tax rules
+        tax_details = get_tax_breakdown(total_taxable_income)
+        tax = tax_details['total_tax']
+        
+        # 3. Annual Net Income (already calculated as taxable income minus tax)
+        net_taxable_income = total_taxable_income - tax
+        
+        # 4. Annual Untaxed Income - from both regular income and asset withdrawals
+        untaxed_income = df[(df['Type'].str.lower() == 'income') & 
+                          (df['Owner'] == owner) & 
+                          (df['Taxable'] != 'yes')]['Monthly_Value'].sum() * 12
+                          
+        untaxed_asset_income = df[(df['Type'].str.lower() == 'asset') & 
+                               (df['Owner'] == owner) & 
+                               (df['Monthly_Value'] > 0) & 
+                               (df['Taxable'] != 'yes')]['Monthly_Value'].sum() * 12
+        
+        total_untaxed_income = untaxed_income + untaxed_asset_income
+        
+        # 5. Total Annual Income - net taxable income plus untaxed income
+        total_annual_income = net_taxable_income + total_untaxed_income
+        
+        # Store all these values in the result dictionary
+        result[owner] = {
+            'taxable_income': total_taxable_income,
+            'tax': tax,
+            'net_taxable_income': net_taxable_income,
+            'non_taxable_income': total_untaxed_income,
+            'net_income': total_annual_income,  # Total income including taxed and untaxed
+            'tax_details': tax_details
+        }
+    
+    # Add joint income if present
+    joint_income = df[(df['Type'].str.lower() == 'income') & (df['Owner'] == 'Joint')]['Monthly_Value'].sum() * 12
+    joint_asset_income = df[(df['Type'].str.lower() == 'asset') & (df['Owner'] == 'Joint') & (df['Monthly_Value'] > 0)]['Monthly_Value'].sum() * 12
+    
+    if joint_income > 0 or joint_asset_income > 0:
+        total_joint_income = joint_income + joint_asset_income
+        result['Joint'] = {
+            'taxable_income': 0,  # Joint income isn't directly taxed
+            'tax': 0,
+            'net_taxable_income': 0,
+            'non_taxable_income': total_joint_income,  # All joint income is treated as untaxed
+            'net_income': total_joint_income,
+            'tax_details': {'gross_income': 0, 'tax_free_allowance': 0, 'total_tax': 0, 
+                          'basic_rate_amount': 0, 'higher_rate_amount': 0, 'additional_rate_amount': 0}
+        }
+    
+    return result
+
+def get_tax_breakdown(gross_income):
+    """Calculate detailed tax breakdown for an individual."""
+    tax_free = 12570
+    basic_rate_limit = 50270
+    higher_rate_limit = 125140
+
+    # Personal allowance taper
+    actual_tax_free = tax_free
+    if (gross_income > 100000):
+        reduction = min((gross_income - 100000) / 2, tax_free)
+        actual_tax_free -= reduction
+
+    remaining_income = gross_income
+    breakdown = {
+        'gross_income': gross_income,
+        'tax_free_allowance': actual_tax_free,
+        'basic_rate_amount': 0,
+        'higher_rate_amount': 0,
+        'additional_rate_amount': 0,
+        'total_tax': 0
+    }
+
+    # Tax free
+    remaining_income -= max(0, actual_tax_free)
+
+    # Basic rate (20%)
+    basic_rate_band = min(max(0, basic_rate_limit - actual_tax_free), remaining_income)
+    breakdown['basic_rate_amount'] = basic_rate_band
+    breakdown['total_tax'] += basic_rate_band * 0.20
+    remaining_income -= basic_rate_band
+
+    # Higher rate (40%)
+    higher_rate_band = min(max(0, higher_rate_limit - basic_rate_limit), remaining_income)
+    breakdown['higher_rate_amount'] = higher_rate_band
+    breakdown['total_tax'] += higher_rate_band * 0.40
+    remaining_income -= higher_rate_band
+
+    # Additional rate (45%)
+    if remaining_income > 0:
+        breakdown['additional_rate_amount'] = remaining_income
+        breakdown['total_tax'] += remaining_income * 0.45
+
+    return breakdown
 
 def calculate_uk_tax(annual_income):
     """Calculate UK tax based on 2024/25 tax bands."""

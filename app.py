@@ -97,7 +97,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def show_tax_details(tax_details):
-    """Display tax calculation explanation."""
+    """Display simplified tax calculation explanation."""
     st.markdown("""
     ## Individual Tax Calculation Breakdown
 
@@ -106,29 +106,17 @@ def show_tax_details(tax_details):
     - Basic Rate: 20% on income from £12,571 to £50,270
     - Higher Rate: 40% on income from £50,271 to £125,140
     - Additional Rate: 45% on income over £125,140
-
-    Below is a detailed breakdown of how the tax is calculated:
     """)
 
-    # Get the correct tax-free allowance to display
+    # Get the tax-free allowance to display
     tax_free_allowance = tax_details.get('tax_free_allowance', 12570)
-    
-    # Calculate gross income if not present
-    if 'gross_income' not in tax_details and 'total_tax' in tax_details:
-        # Estimate gross income from other fields
-        basic_amount = tax_details.get('basic_rate_amount', 0)
-        higher_amount = tax_details.get('higher_rate_amount', 0)
-        additional_amount = tax_details.get('additional_rate_amount', 0)
-        gross_income = tax_free_allowance + basic_amount + higher_amount + additional_amount
-    else:
-        gross_income = tax_details.get('gross_income', 0)
-        
+    gross_income = tax_details.get('gross_income', 0)
     total_tax = tax_details.get('total_tax', 0)
     
     st.markdown(f"""
-    ### 📊 Income Breakdown
+    ### 📊 Taxable Income Breakdown
 
-    **Total Gross Income:** {format_currency(gross_income)}
+    **Total Taxable Income:** {format_currency(gross_income)}
 
     **Personal Allowance:** {format_currency(tax_free_allowance)}
 
@@ -147,24 +135,50 @@ def show_tax_details(tax_details):
     - Tax paid: {format_currency(tax_details['additional_rate_amount'] * 0.45)}
 
     ### 📈 Summary
-    **Total Tax Paid:** {format_currency(total_tax)}
-    **Net Income:** {format_currency(gross_income - total_tax)}
+    **Total Tax Due:** {format_currency(total_tax)}
     """)
 
+def convert_currency_to_float(value):
+    """Convert currency string to float."""
+    if isinstance(value, str):
+        return float(value.replace('£', '').replace(',', ''))
+    return float(value)
+
 def calculate_monthly_value(asset):
-    """Calculates the monthly withdrawal amount from an asset."""
-    capital_value = asset['Capital_Value']
-    growth_rate = asset['Growth_Rate']
-    years_until_depletion = asset['Depletion_Years']
-
-    if years_until_depletion <=0 or years_until_depletion == float('inf'):
-        return 0  # Avoid division by zero or infinity
-
-    # Simple calculation, assuming constant withdrawals. More sophisticated models could be used.
-    total_withdrawal = capital_value * (1 + growth_rate * years_until_depletion)
-    monthly_withdrawal = total_withdrawal / (years_until_depletion * 12)
-
-    return monthly_withdrawal
+    """
+    Calculates the monthly withdrawal amount from an asset.
+    Only uses Period_Value and Frequency, not Depletion_Years.
+    """
+    # Simply use the existing Monthly_Value if available
+    if 'Monthly_Value' in asset:
+        return asset['Monthly_Value']
+    
+    # Otherwise, calculate it based on Period_Value and Frequency
+    period_value = asset['Period_Value'] if 'Period_Value' in asset else 0
+    # Ensure period_value is a float before mathematical operations
+    if isinstance(period_value, str):
+        period_value = convert_currency_to_float(period_value)
+    else:
+        period_value = float(period_value)
+        
+    frequency = asset.get('Frequency', 'Monthly')
+    
+    # Convert frequency to string if it's not already
+    if not isinstance(frequency, str):
+        frequency = str(frequency)
+    
+    # Normalize frequency to lowercase for case-insensitive comparison
+    freq_lower = frequency.lower()
+    
+    if 'week' in freq_lower:
+        return period_value * 52 / 12
+    elif 'month' in freq_lower:
+        return period_value
+    elif 'year' in freq_lower or 'annual' in freq_lower:
+        return period_value / 12
+    elif 'invest' in freq_lower:
+        return 0
+    return period_value  # Default to the original value if frequency not recognized
 
 def calculate_sustainability(assets_df, monthly_surplus):
     """
@@ -418,20 +432,25 @@ def main():
                         st.session_state.df = df
                     df = st.session_state.df  # Use df from session state
 
-                # Individual income summaries - restructured to single column layout
+                # Individual income summaries with more explicit structure
                 st.header("Individual Financial Summary")
                 income_summary_table = create_income_summary_table(processed_data['income_summary'])
 
                 # Create a column for each person
                 person_cols = st.columns(len(income_summary_table))
                 
-                # Populate each column with a person's financial summary
+                # Populate each column with a person's detailed financial summary
                 for i, row in enumerate(income_summary_table):
                     with person_cols[i]:
                         st.subheader(row['Owner'])
-                        st.markdown(f"**Gross Annual Income:** {row['Gross Annual Income']}")
+                        
+                        # Show detailed financial breakdown with more explicit categories
+                        st.markdown(f"**Annual Taxable Income:** {row['Taxable Annual Income']}")
                         st.markdown(f"**Estimated Tax:** {row['Estimated Tax']}")
-                        st.markdown(f"**Net Annual Income:** {row['Net Annual Income']}")
+                        st.markdown(f"**Annual Net Income (after tax):** {row['Annual Net Income']}")
+                        st.markdown(f"**Annual Untaxed Income:** {row['Annual Untaxed Income']}")
+                        st.markdown(f"**Total Annual Income:** {row['Total Annual Income']}")
+                        
                         if st.button("📊 Tax Breakdown", key=f"info_{row['Owner']}", help=f"Show tax calculation details for {row['Owner']}"):
                             st.session_state.page = 'tax_details'
                             st.session_state.tax_details = row['tax_details']
@@ -489,28 +508,32 @@ def main():
                 if df is not None:  # Add check to ensure df is available
                     net_income_df = df.copy()
                     
+                    # First, we need to calculate monthly values without relying on Depletion_Years
+                    # Use the modified version of calculate_monthly_value that doesn't depend on Depletion_Years
+                    net_income_df['Monthly_Value'] = net_income_df.apply(calculate_monthly_value, axis=1)
+                    
                     # For each person, calculate their effective tax rate and apply it to income sources
                     for owner, summary in processed_data['income_summary'].items():
                         if owner == 'Joint':
                             continue
                             
                         # Calculate the effective tax rate for this owner
-                        gross_income = summary['gross_income']
-                        net_income = summary['net_income']
+                        taxable_income = summary['taxable_income']
                         
-                        if gross_income > 0:
-                            effective_tax_rate = 1 - (net_income / gross_income)
+                        if taxable_income > 0:
+                            # Calculate effective tax rate on the taxable portion
+                            effective_tax_rate = summary['tax'] / taxable_income if taxable_income > 0 else 0
                             
                             # Apply the tax rate to each income source for this owner
-                            income_mask = (net_income_df['Type'] == 'Income') & (net_income_df['Owner'] == owner)
-                            asset_income_mask = (net_income_df['Type'] == 'Asset') & (net_income_df['Owner'] == owner) & (net_income_df['Period_Value'] > 0)
+                            income_mask = (net_income_df['Type'] == 'Income') & (net_income_df['Owner'] == owner) & (net_income_df['Taxable'].str.lower() == 'yes')
+                            asset_income_mask = (net_income_df['Type'] == 'Asset') & (net_income_df['Owner'] == owner) & (net_income_df['Monthly_Value'] > 0) & (net_income_df['Taxable'].str.lower() == 'yes')
                             
-                            # Apply to regular income sources
+                            # Apply to regular taxable income sources
                             for idx in net_income_df.index[income_mask]:
                                 gross_monthly = net_income_df.at[idx, 'Monthly_Value']
                                 net_income_df.at[idx, 'Monthly_Value'] = gross_monthly * (1 - effective_tax_rate)
                             
-                            # Apply to asset income sources
+                            # Apply to taxable asset income sources
                             for idx in net_income_df.index[asset_income_mask]:
                                 gross_monthly = net_income_df.at[idx, 'Monthly_Value']
                                 net_income_df.at[idx, 'Monthly_Value'] = gross_monthly * (1 - effective_tax_rate)
@@ -521,7 +544,7 @@ def main():
                         use_container_width=True
                     )
                 else:
-                    # Fallback for when df is not available
+                    # Fallback for when df is not available - use the processed data which already has Monthly_Value
                     st.plotly_chart(
                         create_cashflow_sankey(processed_data['df'], processed_data['total_net_income']),
                         use_container_width=True

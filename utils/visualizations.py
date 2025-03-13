@@ -61,22 +61,29 @@ def get_tax_breakdown(gross_income):
     return breakdown
 
 def create_income_summary_table(income_summary):
-    """Create a formatted table of income and tax per person."""
+    """
+    Create a formatted table of income and tax per person with more explicit categories.
+    
+    Args:
+        income_summary: Dictionary containing calculated income data
+        
+    Returns:
+        List of dictionaries with formatted income data for display
+    """
     rows = []
     for owner, summary in income_summary.items():
         if owner != 'Joint':  # Exclude Joint entries
-            # Use the tax details directly from the income_summary if available
-            tax_details = summary.get('tax_details', get_tax_breakdown(summary['gross_income']))
+            # Directly use values from income_summary which has all the required calculations
+            tax_details = summary.get('tax_details', {})
             
-            # Make sure gross_income is included in tax_details
-            if 'gross_income' not in tax_details:
-                tax_details['gross_income'] = summary['gross_income']
-            
+            # Create row with more explicit categories
             rows.append({
                 'Owner': owner,
-                'Gross Annual Income': format_currency(summary['gross_income']),
+                'Taxable Annual Income': format_currency(summary['taxable_income']),
                 'Estimated Tax': format_currency(summary['tax']),
-                'Net Annual Income': format_currency(summary['net_income']),
+                'Annual Net Income': format_currency(summary['taxable_income'] - summary['tax']),
+                'Annual Untaxed Income': format_currency(summary['non_taxable_income']),
+                'Total Annual Income': format_currency(summary['net_income']),
                 'tax_details': tax_details
             })
     return rows
