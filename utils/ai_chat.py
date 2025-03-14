@@ -15,34 +15,37 @@ def initialize_perplexity_client():
         st.error("Please ensure you've set up your Perplexity API key in .streamlit/secrets.toml")
         return None
 
-def format_financial_data_for_context(processed_data: Dict) -> str:
-    """
-    Format the financial data into a string representation for the AI context.
-    
-    Args:
-        processed_data: Dictionary containing processed financial data
-        
-    Returns:
-        String representation of the financial data
-    """
+def format_financial_data_for_context(processed_data):
+    """Format the financial data into a text context for the AI."""
     context = []
     
-    # Add income summary with clearer breakdown
-    income_summary = processed_data.get('income_summary', {})
-    context.append("## Income Summary")
-    for owner, data in income_summary.items():
-        if owner != 'Joint':
-            context.append(f"{owner}:")
-            # Add detailed breakdown of income sources
-            income_sources = data.get('income_sources', {})
-            regular_income = income_sources.get('regular_income', 0)
-            asset_income = income_sources.get('asset_income', 0)
-            
-            context.append(f"  - Regular Income (salary, etc): £{regular_income:,.2f}/year")
-            context.append(f"  - Income from Assets: £{asset_income:,.2f}/year")
-            context.append(f"  - Gross Annual Income: £{data['gross_income']:,.2f}")
-            context.append(f"  - Annual Tax: £{data['tax']:,.2f}")
-            context.append(f"  - Net Annual Income: £{data['net_income']:,.2f}")
+    # Basic income and expenses summary
+    total_income = processed_data['total_net_income']
+    total_expenses = processed_data['total_expenses']
+    net_cash_flow = total_income - total_expenses
+    
+    context.append(f"## Financial Summary")
+    context.append(f"Annual Household Income: £{total_income:,.2f}")
+    context.append(f"Annual Household Expenses: £{total_expenses:,.2f}")
+    context.append(f"Annual Net Cash Flow: £{net_cash_flow:,.2f}")
+    
+    # Add income details per person
+    context.append(f"\n## Individual Income Details")
+    for owner, data in processed_data['income_summary'].items():
+        context.append(f"\n### {owner}")
+        # Fixed: Access tax details nested structure correctly and handle missing keys
+        context.append(f"  - Annual Taxable Income: £{data['taxable_income']:,.2f}")
+        context.append(f"  - Annual Tax: £{data['tax']:,.2f}")
+        context.append(f"  - Annual Net Income: £{data['net_income']:,.2f}")
+        
+        # Add tax breakdown if available
+        if 'tax_details' in data:
+            tax_details = data['tax_details']
+            context.append("  - Tax Breakdown:")
+            context.append(f"    * Tax-free allowance: £{tax_details.get('tax_free_allowance', 0):,.2f}")
+            context.append(f"    * Basic rate amount: £{tax_details.get('basic_rate_amount', 0):,.2f}")
+            context.append(f"    * Higher rate amount: £{tax_details.get('higher_rate_amount', 0):,.2f}")
+            context.append(f"    * Additional rate amount: £{tax_details.get('additional_rate_amount', 0):,.2f}")
     
     # Add household totals
     context.append("\n## Household Summary")

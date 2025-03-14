@@ -1,5 +1,11 @@
 import pandas as pd
 import numpy as np
+import sys
+
+# Import configuration
+sys.path.append('/workspaces/FinancialAnalysisTool')
+from config import TAX, FINANCE, DATA
+from core.tax import get_tax_breakdown, calculate_uk_tax
 
 def convert_currency_to_float(value):
     """Convert currency string to float."""
@@ -58,7 +64,7 @@ def calculate_depletion_years(capital, monthly_withdrawal, growth_rate=0):
     current_capital = capital
     
     # Maximum years to prevent infinite loops for cases where growth > withdrawal
-    max_years = 100
+    max_years = FINANCE['MAX_DEPLETION_YEARS']
     
     while current_capital > 0 and years < max_years:
         # Simulate one year of monthly withdrawals with growth
@@ -75,17 +81,21 @@ def calculate_depletion_years(capital, monthly_withdrawal, growth_rate=0):
     
     return years if years < max_years else float('inf')
 
-def calculate_detailed_asset_projections(assets_df, years=25):
+def calculate_detailed_asset_projections(assets_df, years=None):
     """
     Calculate detailed year-by-year projections for each asset over the specified period.
     
     Args:
         assets_df: DataFrame containing asset information
-        years: Number of years to project (default: 25)
+        years: Number of years to project (default from config if None)
         
     Returns:
         Dictionary containing annual projections for each asset
     """
+    # Use default from config if years not specified
+    if years is None:
+        years = FINANCE['DEFAULT_PROJECTION_YEARS']
+        
     projections = {}
     
     # Initialize with year 0 (current values)
@@ -164,7 +174,7 @@ def process_data(df):
     column_map = {col.lower(): col for col in df.columns}
     
     # Check for required columns (case-insensitive)
-    required_columns = ['description', 'type', 'owner', 'period_value']
+    required_columns = DATA['REQUIRED_COLUMNS']
     missing_columns = [col for col in required_columns if col not in column_map]
     
     if missing_columns:
@@ -208,7 +218,7 @@ def process_data(df):
     if 'frequency' in column_map:
         df['Frequency'] = df[column_map['frequency']]
     else:
-        df['Frequency'] = 'Monthly'  # Default to monthly if missing
+        df['Frequency'] = FINANCE['DEFAULT_FREQUENCY']  # Default frequency from config
     
     # Normalize taxable field to lowercase for comparison
     df['Taxable'] = df['Taxable'].astype(str).str.lower()
@@ -241,7 +251,7 @@ def process_data(df):
     total_expenses = df[df['Type'].str.lower() == 'expense']['Monthly_Value'].sum() * 12
 
     # Calculate detailed asset projections for 25 years
-    asset_projections = calculate_detailed_asset_projections(assets, 25)
+    asset_projections = calculate_detailed_asset_projections(assets, FINANCE['DEFAULT_PROJECTION_YEARS'])
 
     # Return enhanced processed data
     return {
@@ -326,94 +336,6 @@ def calculate_income_by_owner(df):
         }
     
     return result
-
-def get_tax_breakdown(gross_income):
-    """Calculate detailed tax breakdown for an individual."""
-    tax_free = 12570
-    basic_rate_limit = 50270
-    higher_rate_limit = 125140
-
-    # Personal allowance taper
-    actual_tax_free = tax_free
-    if (gross_income > 100000):
-        reduction = min((gross_income - 100000) / 2, tax_free)
-        actual_tax_free -= reduction
-
-    remaining_income = gross_income
-    breakdown = {
-        'gross_income': gross_income,
-        'tax_free_allowance': actual_tax_free,
-        'basic_rate_amount': 0,
-        'higher_rate_amount': 0,
-        'additional_rate_amount': 0,
-        'total_tax': 0
-    }
-
-    # Tax free
-    remaining_income -= max(0, actual_tax_free)
-
-    # Basic rate (20%)
-    basic_rate_band = min(max(0, basic_rate_limit - actual_tax_free), remaining_income)
-    breakdown['basic_rate_amount'] = basic_rate_band
-    breakdown['total_tax'] += basic_rate_band * 0.20
-    remaining_income -= basic_rate_band
-
-    # Higher rate (40%)
-    higher_rate_band = min(max(0, higher_rate_limit - basic_rate_limit), remaining_income)
-    breakdown['higher_rate_amount'] = higher_rate_band
-    breakdown['total_tax'] += higher_rate_band * 0.40
-    remaining_income -= higher_rate_band
-
-    # Additional rate (45%)
-    if remaining_income > 0:
-        breakdown['additional_rate_amount'] = remaining_income
-        breakdown['total_tax'] += remaining_income * 0.45
-
-    return breakdown
-
-def calculate_uk_tax(annual_income):
-    """Calculate UK tax based on 2024/25 tax bands."""
-    tax_free = 12570  # Personal Allowance
-    basic_rate_limit = 50270
-    higher_rate_limit = 125140
-
-    # Personal allowance taper for income over £100,000
-    if annual_income > 100000:
-        reduction = min((annual_income - 100000) / 2, tax_free)
-        tax_free -= reduction
-
-    # Store the original tax-free allowance for record-keeping
-    original_tax_free = 12570
-    actual_tax_free = tax_free
-
-    remaining_income = annual_income
-    tax = 0
-
-    # Tax free allowance
-    remaining_income = max(0, remaining_income - tax_free)
-
-    # Basic rate (20%): £12,571 to £50,270
-    basic_rate_band = min(max(0, basic_rate_limit - tax_free), remaining_income)
-    tax += basic_rate_band * 0.20
-    remaining_income -= basic_rate_band
-
-    # Higher rate (40%): £50,271 to £125,140
-    higher_rate_band = min(max(0, higher_rate_limit - basic_rate_limit), remaining_income)
-    tax += higher_rate_band * 0.40
-    remaining_income -= higher_rate_band
-
-    # Additional rate (45%): Over £125,140
-    if remaining_income > 0:
-        tax += remaining_income * 0.45
-
-    return {
-        'total_tax': tax,
-        'tax_free_allowance': actual_tax_free,
-        'original_tax_free_allowance': original_tax_free,
-        'basic_rate_amount': basic_rate_band,
-        'higher_rate_amount': higher_rate_band,
-        'additional_rate_amount': remaining_income if remaining_income > 0 else 0
-    }
 
 def calculate_projections(df, years):
     """Calculate individual asset projections over specified years."""

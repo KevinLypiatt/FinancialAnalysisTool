@@ -4,6 +4,12 @@ import numpy as np
 import pandas as pd
 import logging
 import traceback
+import sys
+
+# Import configuration
+sys.path.append('/workspaces/FinancialAnalysisTool')
+from config import TAX, VISUALIZATION, CURRENCY, FINANCE
+from core.tax import get_tax_breakdown
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -11,54 +17,10 @@ logger = logging.getLogger(__name__)
 def format_currency(value):
     """Format number as UK currency string."""
     try:
-        return f"£{value:,.2f}"
+        return f"{CURRENCY['SYMBOL']}{value:,.2f}"
     except Exception as e:
         logger.error(f"Error formatting currency: {str(e)}")
-        return f"£{value}"
-
-def get_tax_breakdown(gross_income):
-    """Calculate detailed tax breakdown for an individual."""
-    tax_free = 12570
-    basic_rate_limit = 50270
-    higher_rate_limit = 125140
-
-    # Personal allowance taper
-    actual_tax_free = tax_free
-    if gross_income > 100000:
-        reduction = min((gross_income - 100000) / 2, tax_free)
-        actual_tax_free -= reduction
-
-    remaining_income = gross_income
-    breakdown = {
-        'gross_income': gross_income,
-        'tax_free_allowance': actual_tax_free,
-        'basic_rate_amount': 0,
-        'higher_rate_amount': 0,
-        'additional_rate_amount': 0,
-        'total_tax': 0
-    }
-
-    # Tax free
-    remaining_income -= max(0, actual_tax_free)
-
-    # Basic rate (20%)
-    basic_rate_band = min(max(0, basic_rate_limit - actual_tax_free), remaining_income)
-    breakdown['basic_rate_amount'] = basic_rate_band
-    breakdown['total_tax'] += basic_rate_band * 0.20
-    remaining_income -= basic_rate_band
-
-    # Higher rate (40%)
-    higher_rate_band = min(max(0, higher_rate_limit - basic_rate_limit), remaining_income)
-    breakdown['higher_rate_amount'] = higher_rate_band
-    breakdown['total_tax'] += higher_rate_band * 0.40
-    remaining_income -= higher_rate_band
-
-    # Additional rate (45%)
-    if remaining_income > 0:
-        breakdown['additional_rate_amount'] = remaining_income
-        breakdown['total_tax'] += remaining_income * 0.45
-
-    return breakdown
+        return f"{CURRENCY['SYMBOL']}{value}"
 
 def create_income_summary_table(income_summary):
     """
@@ -194,20 +156,7 @@ def create_projection_chart(projections, selected_assets=None):
     fig = go.Figure()
 
     # Define a custom color palette with more vibrant, high-contrast colors
-    custom_colors = [
-        '#1f77b4',  # Strong blue
-        '#d62728',  # Brick red
-        '#2ca02c',  # Forest green
-        '#9467bd',  # Purple
-        '#8c564b',  # Brown
-        '#e377c2',  # Pink
-        '#7f7f7f',  # Gray
-        '#17becf',  # Cyan
-        '#ff7f0e',  # Dark orange
-        '#1a5276',  # Navy blue
-        '#a93226',  # Maroon
-        '#196f3d'   # Dark green
-    ]
+    custom_colors = VISUALIZATION['COLORS']['ASSET_COLORS']
 
     # Convert months to years for x-axis
     years = [m/12 for m in projections['months']]
@@ -260,7 +209,7 @@ def create_projection_chart(projections, selected_assets=None):
         },
         xaxis_title="Years",
         yaxis_title="Asset Value (£)",
-        height=500,
+        height=VISUALIZATION['CHART_HEIGHTS']['PROJECTION'],
         margin=dict(t=60, l=50, r=20, b=50),  # Increased top margin for chart controls
         showlegend=True,
         legend=dict(
@@ -389,10 +338,10 @@ def create_cashflow_sankey(df, total_net_income=None):
             label=all_nodes,
             # Color scheme: green for income, blue for central, red for expenses, purple for assets
             color=[
-                "#2ecc71" if i < len(income_sources) else  # Green for income
-                "#9b59b6" if i < len(income_sources) + len(asset_categories) else  # Purple for assets
-                "#3498db" if i == len(income_sources) + len(asset_categories) else  # Blue for central node
-                "#e74c3c"  # Red for expenses
+                VISUALIZATION['COLORS']['INCOME'] if i < len(income_sources) else  # Green for income
+                VISUALIZATION['COLORS']['ASSET'] if i < len(income_sources) + len(asset_categories) else  # Purple for assets
+                VISUALIZATION['COLORS']['CENTRAL'] if i == len(income_sources) + len(asset_categories) else  # Blue for central node
+                VISUALIZATION['COLORS']['EXPENSE']  # Red for expenses
                 for i in range(len(all_nodes))
             ]
         ),
@@ -407,7 +356,7 @@ def create_cashflow_sankey(df, total_net_income=None):
     fig.update_layout(
         title="Household Cash Flow",
         font_size=10,
-        height=650,
+        height=VISUALIZATION['CHART_HEIGHTS']['SANKEY'],
         margin=dict(t=50, l=25, r=25, b=30),  # Reduce left margin by 50%
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -415,17 +364,21 @@ def create_cashflow_sankey(df, total_net_income=None):
 
     return fig
 
-def create_asset_projection_table(asset_projections, intervals=[5, 10, 15, 20]):
+def create_asset_projection_table(asset_projections, intervals=None):
     """
     Create a table showing asset projections at specified year intervals.
     
     Args:
         asset_projections: Dictionary containing asset projections
-        intervals: List of year intervals to display (default: [5, 10, 15, 20])
+        intervals: List of year intervals to display (uses config default if None)
         
     Returns:
         DataFrame containing the projection table
     """
+    # Use default intervals from config if none provided
+    if intervals is None:
+        intervals = FINANCE['PROJECTION_INTERVALS']
+        
     # Create a list to hold table rows
     table_data = []
     
@@ -523,7 +476,7 @@ def create_single_asset_chart(projections, asset_name):
     max_months = min(240, len(projections['months']))
     years = [m/12 for m in projections['months'][:max_months]]
     
-    if asset_name in projections:
+    if (asset_name in projections):
         values = projections[asset_name][:max_months]
         
         fig.add_trace(go.Scatter(
@@ -584,7 +537,9 @@ def create_simplified_sankey(df, total_net_income, total_expenses):
             thickness=20,
             line=dict(color="black", width=0.5),
             label=["Total Income", "Household Budget", "Total Expenses"],
-            color=["#2ecc71", "#3498db", "#e74c3c"]
+            color=[VISUALIZATION['COLORS']['INCOME'], 
+                   VISUALIZATION['COLORS']['CENTRAL'], 
+                   VISUALIZATION['COLORS']['EXPENSE']]
         ),
         link=dict(
             source=[0, 1],  # Total Income → Budget → Expenses
@@ -598,7 +553,7 @@ def create_simplified_sankey(df, total_net_income, total_expenses):
     
     fig.update_layout(
         title="Simplified Cash Flow",
-        height=300,
+        height=VISUALIZATION['CHART_HEIGHTS']['SIMPLE_SANKEY'],
         margin=dict(t=30, l=10, r=10, b=60),
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -618,7 +573,7 @@ def create_simplified_sankey(df, total_net_income, total_expenses):
     return fig
 
 # Create a new function to generate asset cards for mobile view
-def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
+def create_asset_cards(projections, assets_df, intervals=None):
     """
     Create a list of card data for assets, formatted as tables rather than charts.
     For mobile-friendly viewing.
@@ -626,11 +581,15 @@ def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
     Args:
         projections: Dictionary containing asset projections
         assets_df: DataFrame with asset information
-        intervals: List of year intervals to display (default: [5, 10, 15, 20])
+        intervals: List of year intervals to display (uses config default if None)
     
     Returns:
         List of card data dictionaries
     """
+    # Use default intervals from config if none provided
+    if intervals is None:
+        intervals = FINANCE['PROJECTION_INTERVALS']
+        
     cards = []
     
     # Process each asset
@@ -659,7 +618,7 @@ def create_asset_cards(projections, assets_df, intervals=[5, 10, 15, 20]):
                     growth_rate_display = f"{growth_rate:.1%}"
                     
                     if 'Depletion_Years' in asset:
-                        if asset['Depletion_Years'] < 100:
+                        if asset['Depletion_Years'] < FINANCE['LONG_TERM_YEARS']:
                             years = int(asset['Depletion_Years'])
                             months = int((asset['Depletion_Years'] - years) * 12)
                             depletion_years = f"{years}y {months}m"

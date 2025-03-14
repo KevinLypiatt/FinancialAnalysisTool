@@ -8,6 +8,10 @@ import logging
 import os
 import json
 
+# Import configuration
+from config import TAX, FINANCE, VISUALIZATION, CURRENCY
+from core.tax import describe_tax_bands, format_tax_explanation
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -98,44 +102,42 @@ st.markdown("""
 
 def show_tax_details(tax_details):
     """Display simplified tax calculation explanation."""
-    st.markdown("""
+    # Use the tax description from the centralized tax module
+    st.markdown(f"""
     ## Individual Tax Calculation Breakdown
 
-    ### 2024/25 Tax Year Rates (England, Wales, and Northern Ireland)
-    - Personal Allowance: 0% on income up to £12,570
-    - Basic Rate: 20% on income from £12,571 to £50,270
-    - Higher Rate: 40% on income from £50,271 to £125,140
-    - Additional Rate: 45% on income over £125,140
+    {describe_tax_bands()}
     """)
 
-    # Get the tax-free allowance to display
-    tax_free_allowance = tax_details.get('tax_free_allowance', 12570)
-    gross_income = tax_details.get('gross_income', 0)
-    total_tax = tax_details.get('total_tax', 0)
+    # Get the formatted tax explanation
+    tax_explanation = format_tax_explanation(tax_details)
+    summary = tax_explanation['summary']
+    bands = tax_explanation['bands']
     
     st.markdown(f"""
     ### 📊 Taxable Income Breakdown
 
-    **Total Taxable Income:** {format_currency(gross_income)}
+    **Total Taxable Income:** {format_currency(summary['gross_income'])}
 
-    **Personal Allowance:** {format_currency(tax_free_allowance)}
+    **Personal Allowance:** {format_currency(summary['tax_free_allowance'])}
 
     ### 💷 Tax Bands
 
-    **Basic Rate (20%):**
-    - Amount in band: {format_currency(tax_details['basic_rate_amount'])}
-    - Tax paid: {format_currency(tax_details['basic_rate_amount'] * 0.20)}
+    **{bands['basic_rate']['description']}:**
+    - Amount in band: {format_currency(bands['basic_rate']['amount'])}
+    - Tax paid: {format_currency(bands['basic_rate']['tax_paid'])}
 
-    **Higher Rate (40%):**
-    - Amount in band: {format_currency(tax_details['higher_rate_amount'])}
-    - Tax paid: {format_currency(tax_details['higher_rate_amount'] * 0.40)}
+    **{bands['higher_rate']['description']}:**
+    - Amount in band: {format_currency(bands['higher_rate']['amount'])}
+    - Tax paid: {format_currency(bands['higher_rate']['tax_paid'])}
 
-    **Additional Rate (45%):**
-    - Amount in band: {format_currency(tax_details['additional_rate_amount'])}
-    - Tax paid: {format_currency(tax_details['additional_rate_amount'] * 0.45)}
+    **{bands['additional_rate']['description']}:**
+    - Amount in band: {format_currency(bands['additional_rate']['amount'])}
+    - Tax paid: {format_currency(bands['additional_rate']['tax_paid'])}
 
     ### 📈 Summary
-    **Total Tax Due:** {format_currency(total_tax)}
+    **Total Tax Due:** {format_currency(summary['total_tax'])}
+    **Effective Tax Rate:** {summary['effective_tax_rate']:.2f}%
     """)
 
 def convert_currency_to_float(value):
@@ -314,6 +316,10 @@ def calculate_sustainability(assets_df, monthly_surplus):
     # Calculate years until depletion (simple calculation)
     years_until_depletion = total_assets / (monthly_deficit * 12) if monthly_deficit > 0 else float('inf')
     
+    # Determine if years are "infinite" or long term based on config
+    if years_until_depletion > FINANCE['LONG_TERM_YEARS']:
+        return float('inf'), "Your assets can cover expenses for over 100 years", "Even with your current deficit, your assets are sufficient to last for generations."
+    
     if years_until_depletion > 100:
         return float('inf'), "Your assets can cover expenses for over 100 years", "Even with your current deficit, your assets are sufficient to last for generations."
     
@@ -481,7 +487,11 @@ def main():
                 years_sustainable, sustainability_message, detailed_message = calculate_sustainability(assets_df, monthly_surplus)
                 
                 # Format the message in a callout box
-                message_color = "#1c7ed6" if years_sustainable > 10 else "#f59f00" if years_sustainable > 5 else "#fa5252"
+                message_color = (
+                    VISUALIZATION['SUSTAINABILITY_COLORS']['GOOD'] if years_sustainable > 10 else 
+                    VISUALIZATION['SUSTAINABILITY_COLORS']['WARNING'] if years_sustainable > 5 else 
+                    VISUALIZATION['SUSTAINABILITY_COLORS']['DANGER']
+                )
                 
                 st.markdown(
                     f"""
